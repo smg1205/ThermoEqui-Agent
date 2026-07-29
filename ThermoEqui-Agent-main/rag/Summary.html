@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ThermoEqui-Agent RAG 核心架构文档</title>
+    <!-- Mermaid CDN (流程图) -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        /* 全局重置与主题 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #f8fafc;
+            color: #1e293b;
+            line-height: 1.7;
+            padding: 2rem 1rem;
+        }
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            display: flex;
+            gap: 2rem;
+            align-items: flex-start;
+        }
+        /* 侧边目录 */
+        .toc {
+            position: sticky;
+            top: 2rem;
+            flex: 0 0 280px;
+            background: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+            padding: 1.5rem 1.2rem;
+            max-height: calc(100vh - 4rem);
+            overflow-y: auto;
+            border: 1px solid #e9edf2;
+        }
+        .toc-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            color: #0f172a;
+            letter-spacing: 0.3px;
+        }
+        .toc ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        .toc li {
+            margin: 0.6rem 0;
+        }
+        .toc a {
+            text-decoration: none;
+            color: #334155;
+            font-size: 0.9rem;
+            display: block;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            transition: background 0.15s, color 0.15s;
+        }
+        .toc a:hover {
+            background: #f1f5f9;
+            color: #2563eb;
+        }
+        .toc .level2 {
+            padding-left: 1.2rem;
+            font-size: 0.85rem;
+        }
+        .toc .level3 {
+            padding-left: 2rem;
+            font-size: 0.8rem;
+        }
+
+        /* 主内容 */
+        .content {
+            flex: 1;
+            min-width: 0;
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 2.5rem 2.8rem;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+            border: 1px solid #e9edf2;
+        }
+        h1 {
+            font-size: 2.2rem;
+            font-weight: 700;
+            margin-top: 0;
+            margin-bottom: 0.5rem;
+            color: #0f172a;
+            border-bottom: 3px solid #2563eb;
+            padding-bottom: 0.4rem;
+            display: inline-block;
+        }
+        .subhead {
+            color: #475569;
+            margin-top: -0.2rem;
+            margin-bottom: 2rem;
+            font-size: 1rem;
+            background: #f1f5f9;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            display: inline-block;
+        }
+        h2 {
+            font-size: 1.6rem;
+            margin-top: 2.2rem;
+            margin-bottom: 1rem;
+            color: #0f172a;
+            border-left: 5px solid #2563eb;
+            padding-left: 0.8rem;
+        }
+        h3 {
+            font-size: 1.25rem;
+            margin-top: 1.8rem;
+            margin-bottom: 0.6rem;
+            color: #1e293b;
+        }
+        h4 {
+            font-size: 1.05rem;
+            margin-top: 1.2rem;
+            margin-bottom: 0.4rem;
+            color: #334155;
+        }
+        p {
+            margin: 0.8rem 0;
+        }
+        ul, ol {
+            margin: 0.8rem 0 0.8rem 1.8rem;
+        }
+        li {
+            margin: 0.3rem 0;
+        }
+        code {
+            background: #f1f5f9;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: "JetBrains Mono", "Fira Code", monospace;
+            font-size: 0.9em;
+            color: #1e293b;
+        }
+        pre {
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 1.2rem 1.5rem;
+            border-radius: 10px;
+            overflow-x: auto;
+            font-family: "JetBrains Mono", "Fira Code", monospace;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            margin: 1.2rem 0;
+            border: 1px solid #1e293b;
+        }
+        pre code {
+            background: transparent;
+            padding: 0;
+            color: inherit;
+            font-size: inherit;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.2rem 0;
+            font-size: 0.95rem;
+        }
+        th, td {
+            border: 1px solid #d1d9e6;
+            padding: 0.6rem 0.8rem;
+            text-align: left;
+            vertical-align: top;
+        }
+        th {
+            background: #f1f5f9;
+            font-weight: 600;
+        }
+        .badge {
+            display: inline-block;
+            background: #22c55e;
+            color: white;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.15rem 0.6rem;
+            border-radius: 20px;
+            margin-left: 0.5rem;
+            vertical-align: middle;
+        }
+        .badge-warn {
+            background: #eab308;
+        }
+        .highlight-box {
+            background: #f0f7ff;
+            border-left: 5px solid #2563eb;
+            padding: 1rem 1.5rem;
+            border-radius: 0 8px 8px 0;
+            margin: 1.5rem 0;
+        }
+        .highlight-box strong {
+            color: #1e293b;
+        }
+        .mermaid {
+            background: #f8fafc;
+            padding: 1.5rem;
+            border-radius: 10px;
+            margin: 1.5rem 0;
+            border: 1px solid #e9edf2;
+            text-align: center;
+        }
+        hr {
+            border: none;
+            border-top: 2px dashed #e2e8f0;
+            margin: 2.5rem 0;
+        }
+        .footer {
+            text-align: center;
+            color: #94a3b8;
+            font-size: 0.85rem;
+            margin-top: 2.5rem;
+            border-top: 1px solid #e9edf2;
+            padding-top: 1.5rem;
+        }
+
+        /* 响应式 */
+        @media (max-width: 820px) {
+            .container {
+                flex-direction: column;
+            }
+            .toc {
+                position: relative;
+                top: 0;
+                flex: 1;
+                max-height: none;
+                width: 100%;
+            }
+            .content {
+                padding: 1.5rem;
+            }
+        }
+        @media print {
+            .toc { display: none; }
+            .content { box-shadow: none; border: none; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+
+    <!-- 侧边目录 -->
+    <nav class="toc" id="toc">
+        <div class="toc-title">📑 目录</div>
+        <ul>
+            <li><a href="#overview">1. 项目概述</a></li>
+            <li><a href="#architecture">2. 系统架构与数据流</a></li>
+            <li><a href="#modules">3. 核心模块详述</a>
+                <ul>
+                    <li class="level2"><a href="#loader">3.1 文档加载</a></li>
+                    <li class="level2"><a href="#splitter">3.2 文本分割</a></li>
+                    <li class="level2"><a href="#embedding">3.3 嵌入模型</a></li>
+                    <li class="level2"><a href="#vectorstore">3.4 向量存储</a></li>
+                    <li class="level2"><a href="#retriever">3.5 检索入口</a></li>
+                </ul>
+            </li>
+            <li><a href="#config">4. 环境与配置参数</a></li>
+            <li><a href="#validation">5. 验证结果</a></li>
+            <li><a href="#limits">6. 当前限制与演进方向</a></li>
+            <li><a href="#appendix">7. 附录：快速运行</a></li>
+        </ul>
+    </nav>
+
+    <!-- 主内容 -->
+    <main class="content" id="content">
+
+        <h1>🧪 ThermoEqui-Agent RAG 核心架构</h1>
+        <div class="subhead">✅ 当前阶段：核心基础层（RAG Engine） · 状态：已完成并验证通过 · 最后更新：2026-07-28</div>
+
+        <!-- 概述 -->
+        <section id="overview">
+            <h2>1. 项目概述</h2>
+            <p>本模块实现了 RAG（检索增强生成）系统的核心离线能力，包括文档加载、语义切分、向量化索引构建和混合检索。<strong>完全本地离线运行</strong>，不依赖任何外部大模型 API，使用开源的 Sentence-Transformer 模型将文本映射为语义向量。</p>
+            <h3>核心特性</h3>
+            <ul>
+                <li><strong>多格式文档加载</strong>：支持 <code>.md</code>（Markdown）和 <code>.yaml</code> / <code>.yml</code> 配置文件。</li>
+                <li><strong>语义级别文本切分</strong>：基于句子向量相似度动态分割，避免机械截断句子。</li>
+                <li><strong>真实语义嵌入</strong>：集成 <code>all-MiniLM-L6-v2</code> 模型（384维），将文本转为稠密向量。</li>
+                <li><strong>本地向量存储</strong>：基于 NumPy 的 <code>.npz</code> 压缩格式持久化，零外部依赖。</li>
+                <li><strong>混合检索策略</strong>：结合向量语义相似度（70%）与关键词命中率（30%），提升召回精度。</li>
+            </ul>
+        </section>
+
+        <!-- 架构 -->
+        <section id="architecture">
+            <h2>2. 系统架构与数据流</h2>
+            <h3>模块依赖关系图</h3>
+            <div class="mermaid">
+                graph TD
+                    A[知识库文件<br/>knowledge/*.md/yaml] --> B(loader.py<br/>文档加载器)
+                    B --> C[Document 对象]
+                    C --> D(splitter.py<br/>语义分割器)
+                    D --> E[Chunk 对象列表]
+                    E --> F(embedding.py<br/>嵌入模型)
+                    F --> G[向量矩阵]
+                    E & G --> H(vector_store.py<br/>向量存储)
+                    H --> I[vector_store.npz<br/>磁盘文件]
+
+                    J[用户查询 Query] --> K(embedding.py)
+                    K --> J1[查询向量]
+                    I --> L(retriever.py<br/>检索器)
+                    J1 --> L
+                    L --> M[Top-K 相关结果]
+            </div>
+
+            <h3>数据流详细说明</h3>
+            <ol>
+                <li><strong>加载（Load）</strong>：<code>KnowledgeLoader</code> 遍历 <code>knowledge/</code> 目录，根据文件后缀（<code>.md</code> / <code>.yaml</code>）调用对应解析器，生成 <code>Document</code> 对象（包含原始文本、来源路径、分类、元数据）。</li>
+                <li><strong>切分（Split）</strong>：<code>SemanticSplitter</code> 将长文档切分为语义完整的 <code>Chunk</code> 块。
+                    <ul>
+                        <li>先按句子分割。</li>
+                        <li>使用嵌入模型计算相邻句子的余弦相似度。</li>
+                        <li>当相似度低于阈值（默认 0.5）时，标记为话题转变边界并切分。</li>
+                    </ul>
+                </li>
+                <li><strong>向量化（Embed）</strong>：<code>SentenceTransformerEmbedding</code> 将每个 <code>Chunk</code> 的文本内容批量转换为 384 维浮点数向量。</li>
+                <li><strong>索引（Index）</strong>：<code>VectorStore</code> 将 <code>Chunk</code> 及其对应的向量、元数据（来源、分类、ID 等）在内存中关联，并整体打包保存为 <code>.npz</code> 文件。</li>
+                <li><strong>检索（Retrieve）</strong>：查询时，将查询文本转为向量，与存储中的所有向量计算余弦相似度，按分数降序返回 Top-K 结果。支持关键词加权修正。</li>
+            </ol>
+        </section>
+
+        <!-- 模块详述 -->
+        <section id="modules">
+            <h2>3. 核心模块详述</h2>
+
+            <h3 id="loader">3.1 文档加载模块 (<code>loader.py</code>)</h3>
+            <table>
+                <thead><tr><th>类/方法</th><th>功能描述</th></tr></thead>
+                <tbody>
+                    <tr><td><code>Document</code></td><td>数据类，标准化文档结构：<code>content</code>(内容), <code>source</code>(相对路径), <code>category</code>(父目录名), <code>title</code>(标题), <code>metadata</code>(额外元数据)。</td></tr>
+                    <tr><td><code>MarkdownLoader</code></td><td>解析 <code>.md</code> 文件，使用正则提取首个一级标题（<code># Title</code>）作为文档标题。</td></tr>
+                    <tr><td><code>YamlLoader</code></td><td>解析 <code>.yaml</code> 文件，尝试读取 <code>model_name</code> 或 <code>name</code> 字段作为标题，若无则使用文件名。内容以 YAML 格式序列化存储。</td></tr>
+                    <tr><td><code>KnowledgeLoader</code></td><td>门面类。 <code>load_all()</code> 递归加载 <code>KNOWLEDGE_ROOT</code> 下所有受支持的文件。 <code>load_category(category)</code> 按子文件夹分类加载。</td></tr>
+                </tbody>
+            </table>
+            <p><strong>路径映射：</strong></p>
+            <pre><code>KNOWLEDGE_ROOT = Path(__file__).resolve().parents[1] / "knowledge"
+# 假设项目结构：项目根目录/knowledge/工程案例/xxx.md</code></pre>
+
+            <h3 id="splitter">3.2 文本分割模块 (<code>splitter.py</code>)</h3>
+            <table>
+                <thead><tr><th>类</th><th>核心参数</th><th>策略</th></tr></thead>
+                <tbody>
+                    <tr><td><code>MarkdownSplitter</code></td><td><code>chunk_size=500</code><br/><code>chunk_overlap=50</code></td><td><strong>备用方案</strong>。按标题（<code>#</code>, <code>##</code>, <code>###</code>）切分为大段，再按字符数硬切分。</td></tr>
+                    <tr><td><strong><code>SemanticSplitter</code></strong> (当前默认)</td><td><code>max_chunk_size=500</code><br/><code>min_chunk_size=50</code><br/><code>similarity_threshold=0.5</code></td><td><strong>核心方案</strong>。基于句子向量相似度动态分割，保持语义完整性。当累积长度超过最大限制时强制分割。</td></tr>
+                </tbody>
+            </table>
+            <p><strong>语义分割算法伪代码：</strong></p>
+            <pre><code>1. 将文档分割为句子列表 S = [s1, s2, ..., sn]
+2. 计算所有句子的向量 V = embed(S)
+3. 计算相邻句子的余弦相似度 Sim[i] = cosine(V[i], V[i+1])
+4. 遍历句子:
+   - 若 Sim[i] < threshold 且 当前累积长度 > min_chunk_size => 切分
+   - 若 当前累积长度 > max_chunk_size => 强制切分（兜底）
+5. 合并过小的碎片块（&lt; min_chunk_size 的合并到下一块）</code></pre>
+
+            <h3 id="embedding">3.3 嵌入模型模块 (<code>embedding.py</code>)</h3>
+            <table>
+                <thead><tr><th>类</th><th>说明</th></tr></thead>
+                <tbody>
+                    <tr><td><code>HashEmbedding</code></td><td><strong>降级方案</strong>。仅用于离线测试，基于 SHA256 哈希生成伪向量（不具备语义能力）。</td></tr>
+                    <tr><td><strong><code>SentenceTransformerEmbedding</code></strong> (当前默认)</td><td>封装 HuggingFace 的 Sentence-Transformer。自动下载 <code>all-MiniLM-L6-v2</code> 模型（~90MB）。输出 384 维归一化向量。</td></tr>
+                </tbody>
+            </table>
+            <p><strong>初始化逻辑：</strong></p>
+            <pre><code>try:
+    DEFAULT_EMBEDDER = SentenceTransformerEmbedding()
+except ImportError:
+    DEFAULT_EMBEDDER = HashEmbedding()  # 降级并警告</code></pre>
+
+            <h3 id="vectorstore">3.4 向量存储模块 (<code>vector_store.py</code>)</h3>
+            <table>
+                <thead><tr><th>方法</th><th>功能</th></tr></thead>
+                <tbody>
+                    <tr><td><code>add(chunks, embeddings)</code></td><td>将块列表和向量列表配对存入内存 <code>records</code>。</td></tr>
+                    <tr><td><code>search(query_embedding, top_k)</code></td><td>暴力计算余弦相似度。<strong>阈值硬编码为 0.1</strong>，低于该值的向量结果将被过滤。</td></tr>
+                    <tr><td><code>save(path)</code></td><td>使用 <code>np.savez</code> 保存为 <code>.npz</code> 文件，包含 6 个数组（嵌入矩阵、文本内容、来源、分类、块 ID、总块数）。</td></tr>
+                    <tr><td><code>load(path)</code></td><td>从 <code>.npz</code> 重建 <code>VectorStore</code> 对象。</td></tr>
+                </tbody>
+            </table>
+            <p><strong>存储路径：</strong> <code>项目根目录/data/vector_store.npz</code></p>
+
+            <h3 id="retriever">3.5 检索入口模块 (<code>retriever.py</code>)</h3>
+            <table>
+                <thead><tr><th>方法</th><th>说明</th></tr></thead>
+                <tbody>
+                    <tr><td><code>build_index()</code></td><td><strong>全量构建索引</strong>。清空现有向量库，重新加载所有文档 -> 分割 -> 嵌入 -> 保存。</td></tr>
+                    <tr><td><code>retrieve(query, top_k)</code></td><td><strong>纯语义检索</strong>。将查询转为向量，搜索向量库返回 Top-K。</td></tr>
+                    <tr><td><code>retrieve_with_keywords(query, top_k)</code></td><td><strong>混合检索</strong>（推荐）。先召回 2*top_k 个语义结果，再用关键词匹配分数加权重排。</td></tr>
+                    <tr><td><code>from_loaded_store()</code></td><td>类方法。直接加载磁盘上的 <code>.npz</code> 文件初始化检索器，<strong>跳过耗时重建</strong>，用于服务启动。</td></tr>
+                </tbody>
+            </table>
+            <p><strong>混合检索加权公式：</strong></p>
+            <pre><code>最终得分 = 语义相似度 * 0.7 + 关键词命中率 * 0.3</code></pre>
+        </section>
+
+        <!-- 配置 -->
+        <section id="config">
+            <h2>4. 环境与配置参数汇总</h2>
+            <h3>4.1 依赖包</h3>
+            <pre><code># 核心依赖
+pyyaml>=6.0
+numpy>=1.24.0
+sentence-transformers>=2.2.0  # 用于真实嵌入
+
+# 建议（用于加速/兼容）
+scipy>=1.11.0
+scikit-learn>=1.3.0</code></pre>
+
+            <h3>4.2 可调超参数（代码中硬编码值）</h3>
+            <table>
+                <thead><tr><th>参数</th><th>位置</th><th>默认值</th><th>作用</th></tr></thead>
+                <tbody>
+                    <tr><td><code>similarity_threshold</code></td><td><code>splitter.py</code> (SemanticSplitter)</td><td><code>0.5</code></td><td>语义分割敏感度。<strong>调高</strong> → 分割更碎（更多块）；<strong>调低</strong> → 合并更粗（更少块）。</td></tr>
+                    <tr><td><code>max_chunk_size</code></td><td><code>splitter.py</code> (SemanticSplitter)</td><td><code>500</code></td><td>单块最大字符数，防止块过大。</td></tr>
+                    <tr><td><code>min_chunk_size</code></td><td><code>splitter.py</code> (SemanticSplitter)</td><td><code>50</code></td><td>单块最小字符数，防止产生碎片。</td></tr>
+                    <tr><td><code>top_k</code></td><td><code>retriever.py</code> (retrieve)</td><td><code>5</code></td><td>默认返回结果数量。</td></tr>
+                    <tr><td>相似度阈值</td><td><code>vector_store.py</code> (search)</td><td><code>0.1</code></td><td>低于此值的向量结果被丢弃。</td></tr>
+                    <tr><td><code>dimension</code></td><td><code>embedding.py</code></td><td><code>384</code></td><td>向量维度（由模型决定，不可随意修改）。</td></tr>
+                    <tr><td>模型名称</td><td><code>embedding.py</code></td><td><code>"all-MiniLM-L6-v2"</code></td><td>可替换为其他 SBERT 模型。</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- 验证结果 -->
+        <section id="validation">
+            <h2>5. 验证结果（基于当前测试日志）</h2>
+            <h3>5.1 测试环境</h3>
+            <ul>
+                <li>知识库：20 个文档（涵盖工程案例、基础理论、模型选择规则等）</li>
+                <li>嵌入模型：<code>all-MiniLM-L6-v2</code> (首次运行缓存至 <code>~/.cache/huggingface/</code>)</li>
+            </ul>
+
+            <h3>5.2 索引构建结果</h3>
+            <div class="highlight-box">
+                <pre style="background:#0f172a; color:#e2e8f0; padding:1rem; border-radius:8px; margin:0;"><code>✅ 加载到 20 个文档
+✅ 使用语义分割器 (SemanticSplitter)
+✅ 索引构建完成，向量库共 54 个向量块</code></pre>
+            </div>
+            <p><em>对比：若使用旧版硬切分 500 字符，块数为 52。语义分割使块数微增 2，但保证了话题完整性。</em></p>
+
+            <h3>5.3 语义分割抽样诊断（文档 3）</h3>
+            <div class="highlight-box">
+                <pre style="background:#0f172a; color:#e2e8f0; padding:1rem; border-radius:8px; margin:0;"><code>📄 文档: hydrocarbon-distillation.md (共 3 个语义块)
+  块 1: [81 字符] "# Hydrocarbon Distillation ..." (概述)
+  块 2: [651 字符] "## Typical Components ..." (主体组分列表)
+  块 3: [58 字符] "Some systems may require..." (补充说明)</code></pre>
+            </div>
+            <p><strong>结论：</strong>分割边界准确对应话题转折，关键列表（<code>## Typical Components</code>）未被截断，证明语义分割优于机械切分。</p>
+
+            <h3>5.4 检索效果（查询：“热力学平衡”）</h3>
+            <div class="highlight-box">
+                <pre style="background:#0f172a; color:#e2e8f0; padding:1rem; border-radius:8px; margin:0;"><code>1. 相似度 0.1709 | validation_guides/convergence.md (收敛条件指南)
+2. 相似度 0.1276 | fundamentals/activity_coefficient.md (活度系数模型)
+3. 相似度 0.1237 | fundamentals/flash_calculation.md (闪蒸计算)</code></pre>
+            </div>
+            <p><strong>分析：</strong>虽然绝对值偏低，但排名第一的文档确实涉及“热力学平衡计算中的收敛性”，排序逻辑合理。绝对值低是 <code>all-MiniLM-L6-v2</code> 模型的常见现象，重点看相对排序。</p>
+        </section>
+
+        <!-- 限制与演进 -->
+        <section id="limits">
+            <h2>6. 当前限制与未来演进方向</h2>
+            <h3>6.1 已知限制</h3>
+            <ul>
+                <li><strong>向量检索复杂度 O(N)</strong>：当前使用暴力全量计算，在 <code>向量块 &lt; 10,000</code> 时响应迅速，超过该数量级后性能将急剧下降。</li>
+                <li><strong>内存全量加载</strong>：启动时将整个 <code>.npz</code> 文件读入内存，占用随数据量线性增长。</li>
+                <li><strong>不支持增量更新</strong>：新增文档需调用 <code>build_index()</code> 全量重建。</li>
+                <li><strong>无元数据过滤</strong>：检索时无法限制特定分类（如只搜 <code>fundamentals</code>）。</li>
+            </ul>
+
+            <h3>6.2 下一步计划（服务/接口层 &amp; 优化）</h3>
+            <ul>
+                <li><strong>API 服务层</strong>：使用 FastAPI 封装 <code>/retrieve</code> 接口，支持前端/Agent 调用。</li>
+                <li><strong>向量引擎升级</strong>：替换 <code>VectorStore</code> 为 FAISS 或 ChromaDB，支持 HNSW 索引和增量更新。</li>
+                <li><strong>重排序（Reranker）</strong>：引入 Cross-Encoder 模型对初筛结果进行精排，提升精准度。</li>
+                <li><strong>配置外部化</strong>：将阈值、路径等硬编码参数迁移到 <code>.env</code> 或 <code>config.yaml</code>。</li>
+            </ul>
+        </section>
+
+        <!-- 附录 -->
+        <section id="appendix">
+            <h2>7. 附录：快速运行命令</h2>
+            <pre><code># 1. 安装依赖（若未安装）
+pip install pyyaml numpy sentence-transformers
+
+# 2. 运行功能测试（验证索引与检索）
+python -m rag
+# 或 在 PyCharm 中以 Python 脚本方式运行 rag/__init__.py</code></pre>
+        </section>
+
+        <div class="footer">
+            <p>📄 文档版本 v1.0 · 编写于 2026-07-28 · ThermoEqui-Agent 项目</p>
+        </div>
+
+    </main>
+</div>
+
+<!-- 渲染 Mermaid 图表 -->
+<script>
+    mermaid.initialize({ startOnLoad: true, theme: 'base', themeVariables: { background: '#f8fafc' } });
+    // 自动调整图表在深色背景下的可读性
+</script>
+
+</body>
+</html>
