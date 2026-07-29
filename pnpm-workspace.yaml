@@ -1,8 +1,0 @@
-packages:
-  - "apps/web"
-
-onlyBuiltDependencies:
-  - es5-ext
-  - esbuild
-  - sharp
-  - unrs-resolver
