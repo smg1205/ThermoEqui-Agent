@@ -1,0 +1,50 @@
+name: Wilson
+aliases:
+  - wilson
+family: activity_coefficient
+backend: internal
+implementation_status: available
+production_ready: false
+supported_equilibrium_types:
+  - VLE
+  - FLASH
+supported_calculation_types:
+  - bubble_point
+  - dew_point
+  - isobaric_vle
+  - isothermal_vle
+  - tp_flash
+  - phase_stability
+  - azeotrope
+excluded_systems:
+  - electrolyte
+  - LLE
+  - reactive
+  - SLE
+  - polymer
+  - hydrate
+  - petroleum_pseudocomponent
+  - VLLE
+pressure_regime:
+  - low
+  - moderate
+requires_binary_parameters: true
+parameter_requirements:
+  - Reviewed Wilson binary interaction parameters are required
+  - Parameters must be available in the built-in activity-coefficient database or supplied on the request
+validation_requirements:
+  - composition_balance
+  - equilibrium_residual
+  - parameter_applicability
+  - phase_stability
+scope_notes:
+  - Applicable to low- to moderate-pressure VLE and flash-style calculations when reviewed Wilson parameters are available.
+  - LLE is explicitly rejected by the current Wilson backend.
+  - Built-in parameter coverage is limited to reviewed binary systems; production_ready remains false.
+optional_dependency:
+source_refs:
+  - knowledge/model_cards/wilson.yaml
+  - thermo_engine/registry.py
+  - thermo_engine/wilson_backend.py
+  - thermo_engine/_actcoeff_base.py
+  - thermo_engine/actcoeff_params.py

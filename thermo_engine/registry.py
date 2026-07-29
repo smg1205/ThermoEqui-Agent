@@ -13,6 +13,10 @@ from thermo_engine.ideal import IdealRaoultBackend
 from thermo_engine.phasepy_backend import PhasepyPengRobinsonBackend
 from thermo_engine.properties import resolve_component
 from thermo_engine.thermo_backend import ThermoPengRobinsonBackend
+from thermo_engine.nrtl_backend import NrtlBackend
+from thermo_engine.uniquac_backend import UniquacBackend
+from thermo_engine.wilson_backend import WilsonBackend
+from thermo_engine.actcoeff_params import lookup_nrtl, lookup_uniquac
 
 
 @dataclass(frozen=True)
@@ -68,6 +72,8 @@ class ThermodynamicBackendRegistry:
         elif peng_robinson_applicable:
             selected = "Peng-Robinson"
             reason = "Peng-Robinson was selected because the components are outside the local Ideal registry."
+        elif _has_activity_coeff_params(task):
+            selected, reason = _route_activity_coeff_model(task)
         else:
             raise ThermoEquiError(
                 FailureType.PARAMETER_OUT_OF_DOMAIN,
@@ -85,13 +91,8 @@ class ThermodynamicBackendRegistry:
         requested = self.route_task(task).model_name or "Ideal/Raoult"
         registration = next((item for item in self.registrations if item.matches(requested)), None)
         if registration is None:
-            failure_type = (
-                FailureType.MISSING_PARAMETERS
-                if requested.casefold() in {"wilson", "nrtl", "uniquac"}
-                else FailureType.UNSUPPORTED_MODEL
-            )
             raise ThermoEquiError(
-                failure_type,
+                FailureType.UNSUPPORTED_MODEL,
                 f"Model {requested} has no resolved production parameter set/backend.",
                 "Import an evidence-bearing parameter set or choose an available model.",
             )
@@ -102,6 +103,24 @@ class ThermodynamicBackendRegistry:
                 "Choose a calculation supported by the selected model.",
             )
         return registration.factory()
+
+def _has_activity_coeff_params(task: TaskManifest) -> bool:
+    """Check if the component set exists in any activity-coefficient parameter database."""
+    names = [c.name for c in task.components]
+    return lookup_nrtl(names) is not None or lookup_uniquac(names) is not None
+
+
+def _route_activity_coeff_model(task: TaskManifest) -> tuple[str, str]:
+    """Select the best available activity-coefficient model for this system.
+    Priority: NRTL (most general) > UNIQUAC > Wilson.
+    """
+    names = [c.name for c in task.components]
+    if lookup_nrtl(names) is not None:
+        return ("NRTL", "NRTL auto-selected for low-pressure system with reviewed binary interaction parameters.")
+    if lookup_uniquac(names) is not None:
+        return ("UNIQUAC", "UNIQUAC auto-selected for low-pressure system with reviewed binary interaction parameters.")
+    # Wilson is the last resort; if none match, the caller should not reach here
+    return ("Wilson", "Wilson auto-selected for low-pressure system with reviewed binary interaction parameters.")
 
 
 DEFAULT_BACKEND_REGISTRY = ThermodynamicBackendRegistry(
@@ -182,6 +201,56 @@ DEFAULT_BACKEND_REGISTRY = ThermodynamicBackendRegistry(
                 }
             ),
             factory=ClapeyronPengRobinsonBackend,
+        ),
+        BackendRegistration(
+            canonical_name="NRTL",
+            aliases=frozenset({"nrtl"}),
+            supported_calculations=frozenset(
+                {
+                    "bubble_point",
+                    "dew_point",
+                    "isobaric_vle",
+                    "isothermal_vle",
+                    "tp_flash",
+                    "phase_stability",
+                    "azeotrope",
+                    "lle",
+                }
+            ),
+            factory=NrtlBackend,
+        ),
+        BackendRegistration(
+            canonical_name="UNIQUAC",
+            aliases=frozenset({"uniquac"}),
+            supported_calculations=frozenset(
+                {
+                    "bubble_point",
+                    "dew_point",
+                    "isobaric_vle",
+                    "isothermal_vle",
+                    "tp_flash",
+                    "phase_stability",
+                    "azeotrope",
+                    "lle",
+                }
+            ),
+            factory=UniquacBackend,
+        ),
+        BackendRegistration(
+            canonical_name="Wilson",
+            aliases=frozenset({"wilson"}),
+            supported_calculations=frozenset(
+                {
+                    "bubble_point",
+                    "dew_point",
+                    "isobaric_vle",
+                    "isothermal_vle",
+                    "tp_flash",
+                    "phase_stability",
+                    "azeotrope",
+                }
+            ),
+            factory=WilsonBackend,
         ),
     )
 )

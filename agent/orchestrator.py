@@ -9,6 +9,8 @@ from uuid import uuid4
 from agent.graph_workflow import BoundedAgentGraph
 from agent.providers import LLMProvider, LLMProviderOutputError
 from agent.tools import DEFAULT_TOOL_REGISTRY, EngineeringToolRegistry
+from agent.tools import DEFAULT_TOOL_REGISTRY, EngineeringToolRegistry
+from agent.skill_integration import answer_with_skills
 from schemas.domain import (
     AgentStep,
     ChatResponse,
@@ -29,6 +31,8 @@ from thermo_engine.units import pressure_to_kpa, temperature_to_kelvin
 COMPONENT_PATTERNS = (
     ("benzene", "Benzene", "71-43-2", ("苯", "benzene")),
     ("toluene", "Toluene", "108-88-3", ("甲苯", "toluene")),
+    ("ethanol", "Ethanol", "64-17-5", ("乙醇", "ethanol")),
+    ("acetone", "Acetone", "67-64-1", ("丙酮", "acetone")),
     ("methane", "Methane", "74-82-8", ("甲烷", "methane")),
     ("ethane", "Ethane", "74-84-0", ("乙烷", "ethane")),
     ("propane", "Propane", "74-98-6", ("丙烷", "propane")),
@@ -454,7 +458,9 @@ class ConversationOrchestrator:
             Intent.PROCESS_RECOMMENDATION,
             Intent.RESULT_INTERPRETATION,
         }:
-            statements = await self.provider.answer_with_evidence(message)
+            statements = answer_with_skills(message, intent)
+            if not statements:
+                statements = await self.provider.answer_with_evidence(message)
             return ChatResponse(
                 conversation_id=conversation_id,
                 intent=intent,
@@ -522,6 +528,8 @@ class ConversationOrchestrator:
     async def _classify_intent(self, message: str) -> Intent:
         deterministic_intent = await DeterministicProvider().classify_intent(message)
         if deterministic_intent == Intent.UNSUPPORTED_TASK:
+            return deterministic_intent
+        if deterministic_intent == Intent.EQUILIBRIUM_CALCULATION:
             return deterministic_intent
         try:
             provider_intent = await self.provider.classify_intent(message)

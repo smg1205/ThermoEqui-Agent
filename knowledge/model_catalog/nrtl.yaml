@@ -1,0 +1,50 @@
+name: NRTL
+aliases:
+  - nrtl
+family: activity_coefficient
+backend: internal
+implementation_status: available
+production_ready: false
+supported_equilibrium_types:
+  - VLE
+  - FLASH
+supported_calculation_types:
+  - bubble_point
+  - dew_point
+  - isobaric_vle
+  - isothermal_vle
+  - tp_flash
+  - phase_stability
+  - azeotrope
+excluded_systems:
+  - electrolyte_without_extension
+  - LLE
+  - reactive
+  - SLE
+  - polymer
+  - hydrate
+  - petroleum_pseudocomponent
+  - VLLE
+pressure_regime:
+  - low
+  - moderate
+requires_binary_parameters: true
+parameter_requirements:
+  - Reviewed NRTL binary interaction parameters are required
+  - Parameters must be available in the built-in activity-coefficient database or supplied on the request
+validation_requirements:
+  - composition_balance
+  - equilibrium_residual
+  - phase_stability
+  - parameter_applicability
+scope_notes:
+  - Applicable to low- to moderate-pressure non-ideal VLE and flash-style calculations when reviewed NRTL parameters are available.
+  - The current shared activity-coefficient backend does not provide executable LLE support in this codebase.
+  - Built-in parameter coverage is limited to reviewed binary systems; production_ready remains false.
+optional_dependency:
+source_refs:
+  - knowledge/model_cards/nrtl.yaml
+  - thermo_engine/registry.py
+  - thermo_engine/nrtl_backend.py
+  - thermo_engine/_actcoeff_base.py
+  - thermo_engine/actcoeff_params.py

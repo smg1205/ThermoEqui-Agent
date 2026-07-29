@@ -364,11 +364,10 @@ def test_peng_robinson_advertised_operations_cross_public_validation_gate(
 
     result = calculate_equilibrium(task)
     report = validate_equilibrium_result(result)
-    rres = 10
+
     assert result.backend_version.startswith("thermo/")
     assert result.converged
     assert report.overall_status in {"passed", "warning"}
-
 
 
 def test_structured_polymer_task_is_rejected_by_shared_service_guard() -> None:

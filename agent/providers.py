@@ -293,6 +293,28 @@ class OpenAIProvider(ConstrainedLLMProvider):
 class DeepSeekProvider(ConstrainedLLMProvider):
     """DeepSeek Chat Completions adapter with the same constrained LLM role."""
 
+    async def interpret_result(self, result: dict[str, object]) -> list[EvidenceStatement]:
+        """Override: do not filter numbers since they come from the deterministic engine."""
+        grounded_source = json.dumps(result, ensure_ascii=False)
+        value = await self._request(
+            "Interpret the tool result in natural language. "
+            "Summarise the equilibrium phases, key compositions, and any warnings. "
+            "Do not add external citations.",
+            grounded_source,
+        )
+        return [EvidenceStatement(category="Inference", text=value)]
+
+        return [EvidenceStatement(category="Inference", text=value)]
+
+    async def answer_with_evidence(self, message: str) -> list[EvidenceStatement]:
+        """Override: more permissive version that allows grounded knowledge discussion."""
+        value = await self._request(
+            "Answer concise thermodynamics knowledge questions. "
+            "Do not cite external sources. Keep answers informative.",
+            message,
+        )
+        return [EvidenceStatement(category="Knowledge", text=value)]
+
     def __init__(
         self,
         api_key: str,

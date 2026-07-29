@@ -5,7 +5,7 @@ import { VleChart } from "./VleChart";
 
 interface PlotProps {
   data: Array<{ y: number[] }>;
-  layout: { yaxis: { title: { text: string } } };
+  layout: { yaxis: { title: { text: string } }; height: number };
 }
 
 vi.mock("next/dynamic", () => ({
@@ -23,5 +23,6 @@ describe("VleChart", () => {
     const props = JSON.parse(screen.getByTestId("plot-props").textContent ?? "{}") as PlotProps;
     expect(props.data[0].y).toEqual([150, 100]);
     expect(props.layout.yaxis.title.text).toBe("压力 / kPa");
+    expect(props.layout.height).toBe(448);
   });
 });

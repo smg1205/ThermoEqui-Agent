@@ -1,0 +1,16 @@
+{
+  "parameter_set_id": "user-supplied-contract-parameter",
+  "model_name": "Contract Test Model",
+  "component_order": ["test-component-a", "test-component-b"],
+  "parameters": {"p12": 0.1, "p21": -0.2},
+  "parameter_form": "test-only directional parameter form",
+  "units": {"p12": "dimensionless", "p21": "dimensionless"},
+  "temperature_range_K": [280.0, 380.0],
+  "pressure_range_kPa": [50.0, 200.0],
+  "equilibrium_types": ["VLE"],
+  "source_title": null,
+  "source_identifier": null,
+  "source_type": "user_supplied",
+  "quality_level": "unreviewed-test-input",
+  "notes": "Contract-test fixture only; not engineering evidence."
+}

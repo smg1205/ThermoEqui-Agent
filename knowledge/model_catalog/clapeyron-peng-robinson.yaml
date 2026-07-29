@@ -1,0 +1,49 @@
+name: Clapeyron/Peng-Robinson
+aliases:
+  - clapeyron
+  - clapeyron/pr
+  - clapeyron/peng-robinson
+  - clapeyron/peng robinson
+family: cubic_eos
+backend: clapeyron
+implementation_status: available
+production_ready: false
+supported_equilibrium_types:
+  - VLE
+  - FLASH
+supported_calculation_types:
+  - bubble_point
+  - dew_point
+  - isobaric_vle
+  - isothermal_vle
+  - tp_flash
+  - azeotrope
+excluded_systems:
+  - electrolyte
+  - strongly_associating_without_extension
+  - reactive
+  - SLE
+  - polymer
+  - hydrate
+  - petroleum_pseudocomponent
+  - VLLE
+pressure_regime:
+  - moderate
+  - high
+requires_binary_parameters: true
+parameter_requirements:
+  - ChemSep PR kij for every binary pair
+  - Optional pyclapeyron runtime and Julia initialization must be available
+validation_requirements:
+  - composition_balance
+  - equilibrium_residual
+  - phase_stability
+scope_notes:
+  - Optional external Peng-Robinson backend for moderate- to high-pressure VLE and flash calculations.
+  - Uses reviewed ChemSep PR interaction parameters.
+  - Availability depends on pyclapeyron and Julia runtime initialization.
+optional_dependency: pyclapeyron==0.1.1
+source_refs:
+  - thermo_engine/registry.py
+  - thermo_engine/clapeyron_backend.py
+  - tests/test_external_backends.py

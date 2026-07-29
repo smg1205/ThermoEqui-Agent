@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import httpx
 import pytest
@@ -15,8 +16,12 @@ from sqlalchemy.pool import StaticPool
 import apps.api.main as api_module
 from agent.orchestrator import ConversationOrchestrator
 from agent.providers import DeepSeekProvider
-from database.models import EvidenceRecordRow
+from database.models import EvidenceRecordRow, TaskRow
 from database.session import Repository, initialize_database
+
+
+def parameter_payload() -> dict[str, object]:
+    return json.loads((Path(__file__).parent / "fixtures" / "user_supplied_parameter.json").read_text(encoding="utf-8"))
 
 
 def client() -> TestClient:
@@ -74,6 +79,16 @@ def test_chat_persists_real_run_and_exports_json_and_csv() -> None:
         run = test_client.get(f"/api/runs/{run_id}")
         assert run.status_code == 200
         assert run.json()["input_snapshot"]["conditions"]["pressure_kPa"] == 101.325
+        history = test_client.get("/api/runs?limit=1&offset=0")
+        assert history.status_code == 200
+        assert history.json()["total"] == 1
+        assert history.json()["items"][0]["run_id"] == run_id
+        assert "result" not in history.json()["items"][0]
+        assert "input_snapshot" not in history.json()["items"][0]
+        run_status = payload["calculation"]["validation"]["overall_status"]
+        filtered_history = test_client.get(f"/api/runs?status={run_status}")
+        assert filtered_history.status_code == 200
+        assert filtered_history.json()["total"] == 1
         exported_json = test_client.get(f"/api/runs/{run_id}/export?format=json")
         exported_csv = test_client.get(f"/api/runs/{run_id}/export?format=csv")
         assert exported_json.status_code == 200
@@ -83,7 +98,34 @@ def test_chat_persists_real_run_and_exports_json_and_csv() -> None:
             evidence_count = session.scalar(
                 select(func.count()).select_from(EvidenceRecordRow).where(EvidenceRecordRow.run_id == run_id)
             )
+            task_row = session.get(TaskRow, payload["task"]["task_id"])
         assert evidence_count is not None and evidence_count > 0
+        assert task_row is not None
+        assert task_row.conversation_id == payload["conversation_id"]
+
+
+def test_direct_calculation_persists_its_task_manifest() -> None:
+    task = {
+        "equilibrium_type": "VLE",
+        "calculation_type": "isobaric_vle",
+        "components": [
+            {"component_id": "benzene", "name": "Benzene"},
+            {"component_id": "toluene", "name": "Toluene"},
+        ],
+        "conditions": {"pressure_kPa": 101.325},
+        "model_name": "Ideal/Raoult",
+        "points": 3,
+    }
+
+    with client() as test_client:
+        response = test_client.post("/api/calculations/isobaric-vle", json=task)
+        assert response.status_code == 200
+        result = response.json()["result"]
+        with Session(api_module.repository.engine) as session:
+            task_row = session.get(TaskRow, result["task_id"])
+            assert task_row is not None
+            assert task_row.conversation_id is None
+            assert task_row.manifest == result["input_snapshot"]
 
 
 def test_openapi_contains_all_required_routes() -> None:
@@ -102,11 +144,77 @@ def test_openapi_contains_all_required_routes() -> None:
         "/api/calculations/azeotrope",
         "/api/calculations/lle",
         "/api/validation",
+        "/api/runs",
         "/api/runs/{run_id}",
         "/api/runs/{run_id}/export",
         "/health",
     }
     assert expected <= set(api_module.app.openapi()["paths"])
+
+
+def test_parameter_create_search_and_duplicate_conflict_are_structured() -> None:
+    payload = parameter_payload()
+    with client() as test_client:
+        created = test_client.post("/api/parameters", json=payload)
+        assert created.status_code == 201
+
+        searched = test_client.get(
+            "/api/parameters/search",
+            params=[
+                ("model_name", payload["model_name"]),
+                ("components", "test-component-a"),
+                ("components", "test-component-b"),
+            ],
+        )
+        assert searched.status_code == 200
+        assert [item["parameter_set_id"] for item in searched.json()] == [payload["parameter_set_id"]]
+
+        duplicate = test_client.post(
+            "/api/parameters",
+            json=payload,
+            headers={"X-Request-ID": "duplicate-parameter-request"},
+        )
+        assert duplicate.status_code == 409
+        assert duplicate.json()["error"]["code"] == "duplicate_parameter_set"
+        assert duplicate.json()["error"]["request_id"] == "duplicate-parameter-request"
+
+
+def test_parameter_api_rejects_missing_evidence_and_test_fixtures() -> None:
+    missing_evidence = {
+        **parameter_payload(),
+        "source_type": "literature",
+        "source_title": None,
+        "source_identifier": None,
+    }
+    fixture = json.loads((Path(__file__).parent / "fixtures" / "synthetic_nrtl.json").read_text(encoding="utf-8"))
+
+    with client() as test_client:
+        invalid = test_client.post("/api/parameters", json=missing_evidence)
+        assert invalid.status_code == 422
+        assert invalid.json()["error"]["code"] == "invalid_input"
+
+        unsafe = test_client.post("/api/parameters", json=fixture)
+        assert unsafe.status_code == 422
+        assert unsafe.json()["error"]["code"] == "invalid_input"
+
+
+def test_unexpected_server_error_is_sanitized_and_has_request_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_persistence(*_: object, **__: object) -> None:
+        raise RuntimeError("sensitive-database-detail")
+
+    with client() as test_client:
+        monkeypatch.setattr(api_module.repository, "save_chat_and_run", fail_persistence)
+        response = test_client.post(
+            "/api/chat",
+            json={"message": "解释 NRTL"},
+            headers={"X-Request-ID": "unexpected-error-request"},
+        )
+
+    assert response.status_code == 500
+    assert response.headers["X-Request-ID"] == "unexpected-error-request"
+    assert response.json()["error"]["code"] == "internal_server_error"
+    assert response.json()["error"]["request_id"] == "unexpected-error-request"
+    assert "sensitive-database-detail" not in response.text
 
 
 def test_peng_robinson_api_returns_thermo_and_chemsep_provenance() -> None:
@@ -307,6 +415,12 @@ def test_request_validation_and_not_found_use_unified_error_shape() -> None:
         )
         assert invalid.status_code == 422
         assert invalid.json()["error"]["code"] == "request_validation_error"
+        invalid_history = test_client.get("/api/runs?limit=0")
+        assert invalid_history.status_code == 422
+        assert invalid_history.json()["error"]["code"] == "request_validation_error"
+        invalid_status = test_client.get("/api/runs?status=unknown")
+        assert invalid_status.status_code == 422
+        assert invalid_status.json()["error"]["code"] == "request_validation_error"
         missing = test_client.get("/api/runs/not-found")
         assert missing.status_code == 404
         assert missing.json()["error"]["code"] == "http_404"

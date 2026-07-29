@@ -1,0 +1,255 @@
+{
+  "nodes": [
+    {
+      "id": "model:ideal/raoult",
+      "label": "Ideal/Raoult",
+      "type": "model",
+      "attributes": {
+        "family": "activity_coefficient",
+        "requires_binary_parameters": null,
+        "implementation_status": "available",
+        "pressure_regime": [
+          "low"
+        ]
+      }
+    },
+    {
+      "id": "task:vle",
+      "label": "VLE",
+      "type": "task",
+      "attributes": {}
+    },
+    {
+      "id": "task:flash",
+      "label": "FLASH",
+      "type": "task",
+      "attributes": {}
+    },
+    {
+      "id": "system_type:electrolyte",
+      "label": "electrolyte",
+      "type": "system_type",
+      "attributes": {}
+    },
+    {
+      "id": "system_type:strong_nonideal",
+      "label": "strong_nonideal",
+      "type": "system_type",
+      "attributes": {}
+    },
+    {
+      "id": "system_type:liquid_liquid_split",
+      "label": "liquid_liquid_split",
+      "type": "system_type",
+      "attributes": {}
+    },
+    {
+      "id": "model:nrtl",
+      "label": "NRTL",
+      "type": "model",
+      "attributes": {
+        "family": "activity_coefficient",
+        "requires_binary_parameters": null,
+        "implementation_status": "contract_only",
+        "pressure_regime": [
+          "low",
+          "moderate"
+        ]
+      }
+    },
+    {
+      "id": "task:lle",
+      "label": "LLE",
+      "type": "task",
+      "attributes": {}
+    },
+    {
+      "id": "system_type:electrolyte_without_extension",
+      "label": "electrolyte_without_extension",
+      "type": "system_type",
+      "attributes": {}
+    },
+    {
+      "id": "model:peng-robinson",
+      "label": "Peng-Robinson",
+      "type": "model",
+      "attributes": {
+        "family": "cubic_eos",
+        "requires_binary_parameters": null,
+        "implementation_status": "available",
+        "pressure_regime": [
+          "moderate",
+          "high"
+        ]
+      }
+    },
+    {
+      "id": "system_type:strongly_associating_without_extension",
+      "label": "strongly_associating_without_extension",
+      "type": "system_type",
+      "attributes": {}
+    },
+    {
+      "id": "model:uniquac",
+      "label": "UNIQUAC",
+      "type": "model",
+      "attributes": {
+        "family": "activity_coefficient",
+        "requires_binary_parameters": null,
+        "implementation_status": "contract_only",
+        "pressure_regime": [
+          "low",
+          "moderate"
+        ]
+      }
+    },
+    {
+      "id": "model:wilson",
+      "label": "Wilson",
+      "type": "model",
+      "attributes": {
+        "family": "activity_coefficient",
+        "requires_binary_parameters": null,
+        "implementation_status": "contract_only",
+        "pressure_regime": [
+          "low",
+          "moderate"
+        ]
+      }
+    },
+    {
+      "id": "system_type:lle",
+      "label": "LLE",
+      "type": "system_type",
+      "attributes": {}
+    }
+  ],
+  "relationships": [
+    {
+      "source": "model:ideal/raoult",
+      "target": "task:vle",
+      "type": "supports_task",
+      "attributes": {}
+    },
+    {
+      "source": "model:ideal/raoult",
+      "target": "task:flash",
+      "type": "supports_task",
+      "attributes": {}
+    },
+    {
+      "source": "model:ideal/raoult",
+      "target": "system_type:electrolyte",
+      "type": "excludes",
+      "attributes": {
+        "reason": "excluded"
+      }
+    },
+    {
+      "source": "model:ideal/raoult",
+      "target": "system_type:strong_nonideal",
+      "type": "excludes",
+      "attributes": {
+        "reason": "excluded"
+      }
+    },
+    {
+      "source": "model:ideal/raoult",
+      "target": "system_type:liquid_liquid_split",
+      "type": "excludes",
+      "attributes": {
+        "reason": "excluded"
+      }
+    },
+    {
+      "source": "model:nrtl",
+      "target": "task:vle",
+      "type": "supports_task",
+      "attributes": {}
+    },
+    {
+      "source": "model:nrtl",
+      "target": "task:lle",
+      "type": "supports_task",
+      "attributes": {}
+    },
+    {
+      "source": "model:nrtl",
+      "target": "system_type:electrolyte_without_extension",
+      "type": "excludes",
+      "attributes": {
+        "reason": "excluded"
+      }
+    },
+    {
+      "source": "model:peng-robinson",
+      "target": "task:vle",
+      "type": "supports_task",
+      "attributes": {}
+    },
+    {
+      "source": "model:peng-robinson",
+      "target": "task:flash",
+      "type": "supports_task",
+      "attributes": {}
+    },
+    {
+      "source": "model:peng-robinson",
+      "target": "system_type:electrolyte",
+      "type": "excludes",
+      "attributes": {
+        "reason": "excluded"
+      }
+    },
+    {
+      "source": "model:peng-robinson",
+      "target": "system_type:strongly_associating_without_extension",
+      "type": "excludes",
+      "attributes": {
+        "reason": "excluded"
+      }
+    },
+    {
+      "source": "model:uniquac",
+      "target": "task:vle",
+      "type": "supports_task",
+      "attributes": {}
+    },
+    {
+      "source": "model:uniquac",
+      "target": "task:lle",
+      "type": "supports_task",
+      "attributes": {}
+    },
+    {
+      "source": "model:uniquac",
+      "target": "system_type:electrolyte_without_extension",
+      "type": "excludes",
+      "attributes": {
+        "reason": "excluded"
+      }
+    },
+    {
+      "source": "model:wilson",
+      "target": "task:vle",
+      "type": "supports_task",
+      "attributes": {}
+    },
+    {
+      "source": "model:wilson",
+      "target": "system_type:electrolyte",
+      "type": "excludes",
+      "attributes": {
+        "reason": "excluded"
+      }
+    },
+    {
+      "source": "model:wilson",
+      "target": "system_type:lle",
+      "type": "excludes",
+      "attributes": {
+        "reason": "excluded"
+      }
+    }
+  ]
+}

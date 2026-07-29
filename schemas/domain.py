@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from math import isfinite
 from typing import Any, Literal, TypeAlias
 from uuid import uuid4
 
@@ -19,6 +20,7 @@ CalculationType: TypeAlias = Literal[
     "azeotrope",
     "lle",
 ]
+RunStatus: TypeAlias = Literal["passed", "warning", "failed"]
 
 _CALCULATION_TYPE_ALIASES: dict[str, CalculationType] = {
     "bubble": "bubble_point",
@@ -150,19 +152,65 @@ class ModelCard(BaseModel):
 
 class ParameterSet(BaseModel):
     parameter_set_id: str = Field(default_factory=lambda: str(uuid4()))
-    model_name: str
-    component_order: list[str]
-    parameters: dict[str, float]
-    parameter_form: str
-    units: dict[str, str]
+    model_name: str = Field(min_length=1, max_length=128)
+    component_order: list[str] = Field(min_length=2)
+    parameters: dict[str, float] = Field(min_length=1)
+    parameter_form: str = Field(min_length=1, max_length=256)
+    units: dict[str, str] = Field(min_length=1)
     temperature_range_K: tuple[float, float] | None = None
     pressure_range_kPa: tuple[float, float] | None = None
-    equilibrium_types: list[str]
+    equilibrium_types: list[Literal["VLE", "LLE", "FLASH"]] = Field(min_length=1)
     source_title: str | None = None
     source_identifier: str | None = None
     source_type: Literal["literature", "database", "user_supplied", "test_fixture", "estimated", "unknown"]
-    quality_level: str
+    quality_level: str = Field(min_length=1, max_length=64)
     notes: str | None = None
+
+    @field_validator("model_name", "parameter_form", "quality_level")
+    @classmethod
+    def strip_required_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("value must not be blank")
+        return stripped
+
+    @field_validator("component_order")
+    @classmethod
+    def validate_component_order(cls, values: list[str]) -> list[str]:
+        normalized = [value.strip() for value in values]
+        if any(not value for value in normalized):
+            raise ValueError("component_order entries must not be blank")
+        if len({value.casefold() for value in normalized}) != len(normalized):
+            raise ValueError("component_order entries must be unique")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_parameter_evidence(self) -> ParameterSet:
+        if any(not name.strip() for name in self.parameters):
+            raise ValueError("parameter names must not be blank")
+        if any(not isfinite(value) for value in self.parameters.values()):
+            raise ValueError("parameter values must be finite")
+        if set(self.parameters) != set(self.units):
+            raise ValueError("units must contain exactly one entry for every parameter")
+        if any(not unit.strip() for unit in self.units.values()):
+            raise ValueError("parameter units must not be blank")
+
+        for label, bounds in (
+            ("temperature_range_K", self.temperature_range_K),
+            ("pressure_range_kPa", self.pressure_range_kPa),
+        ):
+            if bounds is None:
+                continue
+            lower, upper = bounds
+            if not isfinite(lower) or not isfinite(upper) or lower <= 0 or upper <= lower:
+                raise ValueError(f"{label} must contain finite positive bounds in ascending order")
+
+        if self.source_type in {"literature", "database"}:
+            if self.source_title is None or not self.source_title.strip():
+                raise ValueError(f"{self.source_type} parameter sets require source_title")
+            if self.source_identifier is None or not self.source_identifier.strip():
+                raise ValueError(f"{self.source_type} parameter sets require source_identifier")
+        return self
 
 
 class FailureDetail(BaseModel):
@@ -217,7 +265,7 @@ class CheckResult(BaseModel):
 
 
 class ValidationReport(BaseModel):
-    overall_status: Literal["passed", "warning", "failed"]
+    overall_status: RunStatus
     composition_balance: CheckResult
     material_balance: CheckResult
     equilibrium_residual: CheckResult
@@ -314,11 +362,29 @@ class RunRecord(BaseModel):
     run_id: str
     request_id: str
     task_id: str
-    status: str
+    status: RunStatus
     input_snapshot: dict[str, Any]
     result: dict[str, Any]
     validation: dict[str, Any]
     created_at: datetime
+
+
+class RunSummary(BaseModel):
+    run_id: str
+    request_id: str
+    task_id: str
+    status: RunStatus
+    calculation_type: CalculationType
+    model_name: str
+    backend_version: str
+    created_at: datetime
+
+
+class RunListResponse(BaseModel):
+    items: list[RunSummary]
+    total: int = Field(ge=0)
+    limit: int = Field(ge=1, le=100)
+    offset: int = Field(ge=0)
 
 
 CalculationEnvelope.model_rebuild()

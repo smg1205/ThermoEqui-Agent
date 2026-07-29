@@ -2,8 +2,17 @@
 
 from __future__ import annotations
 
-from schemas.domain import CalculationResult, ComponentIdentity, ThermodynamicConditions
+import json
+from pathlib import Path
+
+import pytest
+
+from schemas.domain import CalculationResult, ComponentIdentity, ParameterSet, ThermodynamicConditions
 from thermo_engine.validation import validate_result
+
+
+def parameter_payload() -> dict[str, object]:
+    return json.loads((Path(__file__).parent / "fixtures" / "user_supplied_parameter.json").read_text(encoding="utf-8"))
 
 
 def test_manifest_conditions_reject_unbalanced_composition() -> None:
@@ -35,6 +44,31 @@ def test_nonconverged_result_cannot_be_validated_as_success() -> None:
 def test_component_schema_keeps_canonical_identity() -> None:
     component = ComponentIdentity(component_id="benzene", name="Benzene", cas_number="71-43-2")
     assert component.model_dump()["cas_number"] == "71-43-2"
+
+
+@pytest.mark.parametrize(
+    ("updates", "message"),
+    [
+        ({"component_order": ["a", "A"]}, "must be unique"),
+        ({"parameters": {"p12": float("nan"), "p21": -0.2}}, "must be finite"),
+        ({"units": {"p12": "dimensionless"}}, "exactly one entry"),
+        ({"temperature_range_K": [380.0, 280.0]}, "ascending order"),
+        (
+            {
+                "source_type": "literature",
+                "source_title": None,
+                "source_identifier": None,
+            },
+            "require source_title",
+        ),
+    ],
+)
+def test_parameter_schema_rejects_unsafe_or_untraceable_values(
+    updates: dict[str, object],
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        ParameterSet.model_validate({**parameter_payload(), **updates})
 
 
 def test_validator_fails_non_positive_result_conditions() -> None:

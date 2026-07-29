@@ -1,0 +1,49 @@
+name: Peng-Robinson
+aliases:
+  - peng-robinson
+  - peng robinson
+  - pr
+family: cubic_eos
+backend: thermo
+implementation_status: available
+production_ready: true
+supported_equilibrium_types:
+  - VLE
+  - FLASH
+supported_calculation_types:
+  - bubble_point
+  - dew_point
+  - isobaric_vle
+  - isothermal_vle
+  - tp_flash
+  - phase_stability
+  - azeotrope
+excluded_systems:
+  - electrolyte
+  - strongly_associating_without_extension
+  - reactive
+  - SLE
+  - polymer
+  - hydrate
+  - petroleum_pseudocomponent
+  - VLLE
+pressure_regime:
+  - moderate
+  - high
+requires_binary_parameters: true
+parameter_requirements:
+  - ChemSep PR kij for every binary pair
+  - Components must be hydrocarbons or reviewed allowlisted light gases
+validation_requirements:
+  - composition_balance
+  - fugacity_equality
+  - phase_stability
+scope_notes:
+  - Applicable to hydrocarbons and reviewed light-gas systems within the current backend scope.
+  - Intended for moderate- to high-pressure VLE and flash calculations.
+  - Requires reviewed ChemSep PR interaction parameters for every binary pair.
+optional_dependency:
+source_refs:
+  - knowledge/model_cards/peng-robinson.yaml
+  - thermo_engine/registry.py
+  - thermo_engine/thermo_backend.py

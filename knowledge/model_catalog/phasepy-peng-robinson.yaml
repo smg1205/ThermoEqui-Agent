@@ -1,0 +1,49 @@
+name: Phasepy/Peng-Robinson
+aliases:
+  - phasepy
+  - phasepy/pr
+  - phasepy/peng-robinson
+  - phasepy/peng robinson
+family: cubic_eos
+backend: phasepy
+implementation_status: available
+production_ready: false
+supported_equilibrium_types:
+  - VLE
+  - FLASH
+supported_calculation_types:
+  - bubble_point
+  - dew_point
+  - isobaric_vle
+  - isothermal_vle
+  - tp_flash
+  - azeotrope
+excluded_systems:
+  - electrolyte
+  - strongly_associating_without_extension
+  - reactive
+  - SLE
+  - polymer
+  - hydrate
+  - petroleum_pseudocomponent
+  - VLLE
+pressure_regime:
+  - moderate
+  - high
+requires_binary_parameters: true
+parameter_requirements:
+  - ChemSep PR kij for every binary pair
+  - Optional Phasepy runtime must be installed
+validation_requirements:
+  - composition_balance
+  - equilibrium_residual
+  - phase_stability
+scope_notes:
+  - Optional external Peng-Robinson backend for moderate- to high-pressure VLE and flash calculations.
+  - Uses reviewed ChemSep PR interaction parameters.
+  - Independent phase-stability evidence is limited for TP flash in this adapter.
+optional_dependency: phasepy==0.0.56
+source_refs:
+  - thermo_engine/registry.py
+  - thermo_engine/phasepy_backend.py
+  - tests/test_external_backends.py

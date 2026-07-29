@@ -1,0 +1,48 @@
+name: Ideal/Raoult
+aliases:
+  - ideal
+  - raoult
+  - ideal/raoult
+family: activity_coefficient
+backend: internal
+implementation_status: available
+production_ready: true
+supported_equilibrium_types:
+  - VLE
+  - FLASH
+supported_calculation_types:
+  - bubble_point
+  - dew_point
+  - isobaric_vle
+  - isothermal_vle
+  - tp_flash
+  - phase_stability
+  - azeotrope
+excluded_systems:
+  - electrolyte
+  - strong_nonideal
+  - liquid_liquid_split
+  - reactive
+  - SLE
+  - polymer
+  - hydrate
+  - petroleum_pseudocomponent
+  - VLLE
+pressure_regime:
+  - low
+requires_binary_parameters: false
+parameter_requirements: []
+validation_requirements:
+  - composition_balance
+  - equilibrium_residual
+  - convergence
+scope_notes:
+  - Applicable to reviewed non-electrolyte mixtures within the local pure-property registry.
+  - Intended for low-pressure ideal-liquid and ideal-gas calculations.
+  - Does not support liquid-liquid equilibrium in the current product scope.
+  - Local pure-property coverage is limited to reviewed components in the internal registry.
+optional_dependency:
+source_refs:
+  - knowledge/model_cards/ideal.yaml
+  - thermo_engine/registry.py
+  - thermo_engine/ideal.py
