@@ -2,7 +2,7 @@
 import os, subprocess, sys, time
 
 os.environ["LLM_PROVIDER"] = "deepseek"
-os.environ["DEEPSEEK_API_KEY"] = "sk-e78cc0ad37584883b97aa727e8a1760c"
+os.environ["DEEPSEEK_API_KEY"] = ""
 os.environ["DEEPSEEK_MODEL"] = "deepseek-v4-flash"
 os.environ["DEEPSEEK_BASE_URL"] = "https://api.deepseek.com"
 
