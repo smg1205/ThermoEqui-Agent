@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { exportUrl, rerunTask, sendChat } from "@/lib/api";
 import type { AgentStep, CalculationEnvelope, ChatResponse, TaskManifest } from "@/lib/types";
 import { AgentRuntime } from "./AgentRuntime";
+import { FlashResultCard } from "./FlashResultCard";
 import { ScientificValidationCard } from "./ScientificValidationCard";
 import { VleChart } from "./VleChart";
 
@@ -57,6 +58,7 @@ export function Workbench() {
 
   const risk = useMemo(() => riskLabel(calculation), [calculation]);
   const agentRuntimeStatus = useMemo(() => agentStatus(executionSteps, loading), [executionSteps, loading]);
+  const isFlashResult = calculation?.result.calculation_type === "tp_flash";
 
   useEffect(() => {
     const textarea = composerRef.current;
@@ -258,7 +260,7 @@ export function Workbench() {
 
             <div className="results-stack">
               {calculation && <ScientificValidationCard calculation={calculation} />}
-              {calculation && (
+              {calculation && !isFlashResult && (
                 <section className="result-panel chart-panel">
                   <div className="panel-heading">
                     <h3>相平衡图</h3>
@@ -273,6 +275,7 @@ export function Workbench() {
                   />
                 </section>
               )}
+              {calculation && isFlashResult && <FlashResultCard calculation={calculation} />}
             </div>
 
             <nav aria-label="结果视图">

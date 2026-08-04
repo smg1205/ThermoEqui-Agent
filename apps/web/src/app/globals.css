@@ -904,6 +904,59 @@ a {
   margin-top: 0;
 }
 
+.flash-result-card {
+  margin-top: 0;
+}
+
+.flash-result-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+}
+
+.flash-result-grid article,
+.flash-result-meta > div {
+  border: 1px solid #dae4ea;
+  background: #ffffffd9;
+  padding: 10px;
+  border-radius: 10px;
+}
+
+.flash-result-grid span,
+.flash-result-meta span {
+  display: block;
+  color: #768a98;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.flash-result-grid strong,
+.flash-result-meta strong {
+  display: block;
+  color: #213547;
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.flash-result-grid p,
+.flash-result-meta p {
+  margin: 4px 0 0;
+  color: #607382;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.flash-result-meta {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
 .scientific-validation-card {
   margin: 0;
   padding: 7px 9px;
@@ -1413,7 +1466,8 @@ tbody tr:nth-child(even) {
   }
 
   .topbar-status-grid,
-  .scientific-validation-grid {
+  .scientific-validation-grid,
+  .flash-result-meta {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1459,7 +1513,9 @@ tbody tr:nth-child(even) {
 
   .topbar-status-grid,
   .scientific-validation-grid,
-  .runtime-flow {
+  .runtime-flow,
+  .flash-result-grid,
+  .flash-result-meta {
     grid-template-columns: 1fr;
     min-width: 0;
     width: 100%;
