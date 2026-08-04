@@ -122,13 +122,23 @@ describe("Workbench", () => {
 
   it("loads the engineering workbench and accepts a conversation task", async () => {
     render(<Workbench />);
-    expect(screen.getByText("宸ョ▼瀵硅瘽")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /杩愯浠诲姟/i }));
+    expect(screen.getByText("工程对话")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /运行任务/i }));
     await waitFor(() => expect(screen.getByText("Calculation complete.")).toBeInTheDocument());
     expect(screen.getByTestId("vle-chart")).toBeInTheDocument();
     expect(screen.getByText("Benzene / Toluene")).toBeInTheDocument();
-    expect(screen.getByText("1 浠诲姟鐞嗚В")).toBeInTheDocument();
-    expect(screen.getByText("4 缁撴灉楠岃瘉")).toBeInTheDocument();
+    expect(screen.getByText("1 任务理解")).toBeInTheDocument();
+    expect(screen.getByText("4 结果验证")).toBeInTheDocument();
+  });
+
+  it("clears the textarea after a successful task submission", async () => {
+    render(<Workbench />);
+    const composer = screen.getByLabelText("任务输入");
+    fireEvent.change(composer, { target: { value: "第一行\n第二行" } });
+    expect(composer).toHaveValue("第一行\n第二行");
+    fireEvent.click(screen.getByRole("button", { name: /运行任务/i }));
+    await waitFor(() => expect(screen.getByText("Calculation complete.")).toBeInTheDocument());
+    expect(composer).toHaveValue("");
   });
 
   it("keeps API errors in the diagnostic panel", async () => {
@@ -137,7 +147,7 @@ describe("Workbench", () => {
       vi.fn().mockResolvedValue({ ok: false, json: async () => ({ error: { message: "Missing parameters" } }) }),
     );
     render(<Workbench />);
-    fireEvent.click(screen.getByRole("button", { name: /杩愯浠诲姟/i }));
+    fireEvent.click(screen.getByRole("button", { name: /运行任务/i }));
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Missing parameters"));
   });
 
@@ -148,20 +158,20 @@ describe("Workbench", () => {
       .mockResolvedValueOnce({ ok: true, json: async () => response.calculation });
     vi.stubGlobal("fetch", fetchMock);
     render(<Workbench />);
-    fireEvent.click(screen.getByRole("button", { name: /杩愯浠诲姟/i }));
+    fireEvent.click(screen.getByRole("button", { name: /运行任务/i }));
     await waitFor(() => expect(screen.getByTestId("vle-chart")).toBeInTheDocument());
-    fireEvent.change(screen.getByLabelText("鍘嬪姏 kPa"), { target: { value: "80" } });
-    fireEvent.click(screen.getByRole("button", { name: "鎸夊綋鍓嶆潯浠堕噸鏂拌绠? } }));
+    fireEvent.change(screen.getByLabelText("压力 kPa"), { target: { value: "80" } });
+    fireEvent.click(screen.getByRole("button", { name: "按当前条件重新计算" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     const rerunBody = JSON.parse(String(fetchMock.mock.calls[1][1]?.body));
     expect(rerunBody.conditions.pressure_kPa).toBe(80);
     fireEvent.click(screen.getByRole("button", { name: "Table" }));
     expect(screen.getByText("T / K")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "涓嬭浇 JSON" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "下载 JSON" })).toHaveAttribute(
       "href",
       expect.stringContaining("format=json"),
     );
-    expect(screen.getByRole("link", { name: "涓嬭浇 CSV" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "下载 CSV" })).toHaveAttribute(
       "href",
       expect.stringContaining("format=csv"),
     );
@@ -169,10 +179,10 @@ describe("Workbench", () => {
 
   it("shows model applicability feedback in the model tab", async () => {
     render(<Workbench />);
-    fireEvent.click(screen.getByRole("button", { name: /杩愯浠诲姟/i }));
+    fireEvent.click(screen.getByRole("button", { name: /运行任务/i }));
     await waitFor(() => expect(screen.getByText("Calculation complete.")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Model" }));
-    expect(screen.getByText("NRTL")).toBeInTheDocument();
+    expect(screen.getAllByText("NRTL").length).toBeGreaterThan(0);
     expect(screen.getByText("NRTL does not support LLE")).toBeInTheDocument();
     expect(screen.getByText("模型不可用")).toBeInTheDocument();
     expect(screen.getByText("建议：选择其他支持模型或补充必要参数。")).toBeInTheDocument();

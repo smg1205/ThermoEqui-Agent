@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { exportUrl, rerunTask, sendChat } from "@/lib/api";
 import type { AgentStep, CalculationEnvelope, ChatResponse, TaskManifest } from "@/lib/types";
 import { AgentRuntime } from "./AgentRuntime";
@@ -53,9 +53,18 @@ export function Workbench() {
   const [activeTab, setActiveTab] = useState<DetailTab>("table");
   const [loading, setLoading] = useState(false);
   const [diagnostic, setDiagnostic] = useState<string>();
+  const composerRef = useRef<HTMLTextAreaElement>(null);
 
   const risk = useMemo(() => riskLabel(calculation), [calculation]);
   const agentRuntimeStatus = useMemo(() => agentStatus(executionSteps, loading), [executionSteps, loading]);
+
+  useEffect(() => {
+    const textarea = composerRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
+    textarea.style.overflowY = textarea.scrollHeight > 160 ? "auto" : "hidden";
+  }, [input]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -69,6 +78,7 @@ export function Workbench() {
       setConversationId(response.conversation_id);
       setExecutionSteps(response.execution_steps);
       setMessages((current) => [...current, { role: "agent", text: response.answer }]);
+      setInput("");
       if (response.task) setTask(response.task);
       const nextCalculation = response.calculation;
       if (nextCalculation) {
@@ -214,7 +224,13 @@ export function Workbench() {
                 )}
               </div>
               <form onSubmit={submit} className="composer composer-sticky">
-                <textarea aria-label="任务输入" value={input} onChange={(event) => setInput(event.target.value)} />
+                <textarea
+                  ref={composerRef}
+                  aria-label="任务输入"
+                  value={input}
+                  rows={1}
+                  onChange={(event) => setInput(event.target.value)}
+                />
                 <button disabled={loading}>运行任务</button>
               </form>
             </div>
