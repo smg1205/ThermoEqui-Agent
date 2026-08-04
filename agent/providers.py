@@ -25,7 +25,7 @@ class LLMProvider(Protocol):
         available_tools: list[dict[str, str]],
     ) -> str: ...
 
-    async def answer_with_evidence(self, message: str) -> list[EvidenceStatement]: ...
+    async def answer_with_evidence(self, message: str, strict: bool = False) -> list[EvidenceStatement]: ...
 
     async def interpret_result(self, result: dict[str, object]) -> list[EvidenceStatement]: ...
 
@@ -184,14 +184,16 @@ class ConstrainedLLMProvider:
                 )
         raise LLMProviderOutputError("External provider returned an invalid task manifest.")
 
-    async def answer_with_evidence(self, message: str) -> list[EvidenceStatement]:
+    async def answer_with_evidence(self, message: str, strict: bool = False) -> list[EvidenceStatement]:
         value = await self._request(
             "Answer concise thermodynamics knowledge questions without fabricating numerical data or citations. "
             "Do not cite any source. Prefix every paragraph with Knowledge:, Inference:, or Warning:.",
             message,
         )
-        if _contains_ungrounded_claim(value):
+        if strict and _contains_ungrounded_claim(value):
             return [EvidenceStatement(category="Warning", text=_WITHHELD_TEXT)]
+        if _contains_ungrounded_claim(value):
+            value += "\n\n（以上涉及数值未经确定性引擎验证，请以计算结果为准。）"
         return [EvidenceStatement(category="Knowledge", text=value)]
 
     async def select_tool(
@@ -306,13 +308,17 @@ class DeepSeekProvider(ConstrainedLLMProvider):
 
         return [EvidenceStatement(category="Inference", text=value)]
 
-    async def answer_with_evidence(self, message: str) -> list[EvidenceStatement]:
-        """Override: more permissive version that allows grounded knowledge discussion."""
+    async def answer_with_evidence(self, message: str, strict: bool = False) -> list[EvidenceStatement]:
+        """普通聊天宽松回答；strict=True 时数值/引用扣留。"""
         value = await self._request(
             "Answer concise thermodynamics knowledge questions. "
             "Do not cite external sources. Keep answers informative.",
             message,
         )
+        if strict and _contains_ungrounded_claim(value):
+            return [EvidenceStatement(category="Warning", text=_WITHHELD_TEXT)]
+        if _contains_ungrounded_claim(value):
+            value += "\n\n（以上涉及数值未经确定性引擎验证，请以计算结果为准。）"
         return [EvidenceStatement(category="Knowledge", text=value)]
 
     def __init__(

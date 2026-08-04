@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass, field
 from uuid import uuid4
 
+from agent.providers import LLMProvider, LLMProviderError, LLMProviderOutputError
 from agent.graph_workflow import BoundedAgentGraph
 from agent.providers import LLMProvider, LLMProviderOutputError
 from agent.tools import DEFAULT_TOOL_REGISTRY, EngineeringToolRegistry
@@ -334,7 +335,7 @@ class DeterministicProvider:
             original_question=message,
         )
 
-    async def answer_with_evidence(self, message: str) -> list[EvidenceStatement]:
+    async def answer_with_evidence(self, message: str, strict: bool = False) -> list[EvidenceStatement]:
         if "nrtl" in message.casefold() and ("peng" in message.casefold() or "pr" in message.casefold()):
             text = (
                 "NRTL 是液相活度系数模型，适合低到中压下的非理想液相 VLE/LLE，通常需要有来源的二元交互参数；"
@@ -415,6 +416,7 @@ def _build_calculation_summary(
     comps = " / ".join(c.name for c in components)
     parts: list[str] = [f"模型：{result.model_name}"]
 
+
     if result.temperature_K is not None:
         parts.append(f"T={result.temperature_K:.2f} K")
     if result.pressure_kPa is not None:
@@ -422,6 +424,8 @@ def _build_calculation_summary(
 
     if result.calculation_type == "tp_flash" and result.phases:
         for p in result.phases:
+            if p.fraction < 1e-10:
+                continue
             c_str = ", ".join(f"{x:.4f}" for x in p.composition)
             parts.append(f"{p.phase}相({p.fraction*100:.1f}%)：({c_str})")
         if result.vapor_fraction is not None:
@@ -435,8 +439,7 @@ def _build_calculation_summary(
         first = result.warnings[0]
         parts.append(f"⚠ {first[:80]}{'…' if len(first) > 80 else ''}")
 
-    return "计算完成。\n" + " | ".join(parts)
-
+    return "计算完成。\n" + "\n".join(parts)
 class ConversationOrchestrator:
     def __init__(
         self,
@@ -489,9 +492,15 @@ class ConversationOrchestrator:
             Intent.PROCESS_RECOMMENDATION,
             Intent.RESULT_INTERPRETATION,
         }:
-            statements = answer_with_skills(message, intent)
-            if not statements:
-                statements = await self.provider.answer_with_evidence(message)
+            strict = intent in {Intent.PARAMETER_QUERY, Intent.DATA_QUERY}   # 新增
+            try:
+                statements = await self.provider.answer_with_evidence(message, strict=strict)
+            except (LLMProviderError, LLMProviderOutputError):
+                statements = []
+            if not statements or statements[0].category == "Warning":
+                skill_statements = answer_with_skills(message, intent)
+                if skill_statements:
+                    statements = skill_statements
             return ChatResponse(
                 conversation_id=conversation_id,
                 intent=intent,
@@ -528,7 +537,7 @@ class ConversationOrchestrator:
             return ChatResponse(
                 conversation_id=conversation_id,
                 intent=intent,
-                answer=_build_calculation_summary(envelope, task.components),    # 改动 7.30
+                answer=_build_calculation_summary(envelope, task.components),
                 statements=statements,
                 execution_steps=execution_steps,
                 task=task,
@@ -560,12 +569,23 @@ class ConversationOrchestrator:
         deterministic_intent = await DeterministicProvider().classify_intent(message)
         if deterministic_intent == Intent.UNSUPPORTED_TASK:
             return deterministic_intent
-        if deterministic_intent == Intent.EQUILIBRIUM_CALCULATION:
-            return deterministic_intent
         try:
             provider_intent = await self.provider.classify_intent(message)
         except LLMProviderOutputError:
             return deterministic_intent
+        if (
+            provider_intent == Intent.EQUILIBRIUM_CALCULATION
+            and deterministic_intent != Intent.EQUILIBRIUM_CALCULATION
+            and not _mentioned_components(message)
+        ):
+            return deterministic_intent
+        if (
+            deterministic_intent == Intent.EQUILIBRIUM_CALCULATION
+            and provider_intent != Intent.EQUILIBRIUM_CALCULATION
+            and _mentioned_components(message)
+        ):
+            return deterministic_intent
+
         if (
             deterministic_intent == Intent.MODEL_SELECTION_QA
             and provider_intent == Intent.EQUILIBRIUM_CALCULATION
