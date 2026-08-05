@@ -6,12 +6,10 @@ import re
 from dataclasses import dataclass, field
 from uuid import uuid4
 
-from agent.providers import LLMProvider, LLMProviderError, LLMProviderOutputError
 from agent.graph_workflow import BoundedAgentGraph
-from agent.providers import LLMProvider, LLMProviderOutputError
-from agent.tools import DEFAULT_TOOL_REGISTRY, EngineeringToolRegistry
-from agent.tools import DEFAULT_TOOL_REGISTRY, EngineeringToolRegistry
+from agent.providers import LLMProvider, LLMProviderError, LLMProviderOutputError
 from agent.skill_integration import answer_with_skills
+from agent.tools import DEFAULT_TOOL_REGISTRY, EngineeringToolRegistry
 from schemas.domain import (
     AgentStep,
     CalculationEnvelope,
@@ -59,10 +57,16 @@ _MODEL_COMPARISON_MARKERS = (
     "区别",
     "有什么不同",
     "比较",
+    "对比",
+    "差异",
     "difference",
     "compare",
     "comparison",
     "versus",
+    "更适合",
+    "更好",
+    "哪个好",
+    "why.*better",
 )
 _MODEL_TOPIC_MARKERS = (
     "模型",
@@ -83,9 +87,77 @@ _MODEL_TOPIC_MARKERS = (
     "uniquac",
     "raoult",
 )
+_PARAMETER_QUERY_MARKERS = (
+    "参数",
+    "parameter",
+    "参数值",
+    "parameter value",
+    "二元参数",
+    "binary parameter",
+    "交互参数",
+    "interaction parameter",
+)
+_PARAMETER_QUERY_TOPIC_MARKERS = (
+    "是什么",
+    "有哪些",
+    "是多少",
+    "是什么意思",
+    "代表什么",
+    "物理意义",
+    "含义",
+    "meaning",
+    "what is",
+    "what are",
+    "how much",
+    "参数",
+    "parameter",
+)
+
+
+def _is_parameter_query_question(message: str) -> bool:
+    """Check if a message is a pure parameter query (not a model comparison or calculation).
+
+    Pure parameter queries are like: "NRTL的α参数是什么", "二元参数怎么获取"
+    Model comparisons mentioning parameters are NOT parameter queries.
+    Concept questions about parameter meaning are NOT parameter queries.
+    """
+    lower = message.casefold()
+    has_param_marker = any(marker in lower for marker in _PARAMETER_QUERY_MARKERS)
+    if not has_param_marker:
+        return False
+    if _is_model_comparison_question(message):
+        return False
+    comparison_markers = ("区别", "比较", "对比", "difference", "compare", "comparison", "versus")
+    if any(marker in lower for marker in comparison_markers):
+        return False
+    calc_markers = ("计算", "算", "求", "calc", "compute", "simulate")
+    if any(marker in lower for marker in calc_markers):
+        return False
+    # If asking about physical meaning/interpretation, it's a concept QA
+    meaning_markers = ("物理意义", "是什么意思", "含义", "代表什么", "meaning", "怎么理解", "是什么")
+    if any(marker in lower for marker in meaning_markers):
+        return False
+    # If asking about Antoine parameters, it's a data/concept query
+    if "antoine" in lower:
+        return False
+    return True
+
+
+_CONCEPT_QA_KEYWORDS = re.compile(
+    r"(分析|解释|原理|概念|意义|为什么|是什么|介绍|阐述|理解|讲解|说明|讨论|"
+    r"对比|比较|区别|联系|特点|特征|应用|用途|案例|例子|请问|如何|怎样|怎么|"
+    r"判断|判断.*是否|是否会|if.*occurs|how.*to.*judge|why|what|concept|explain|describe)"
+)
+
+
+def _is_concept_question(message: str) -> bool:
+    """Check if a message is a concept Q&A rather than a calculation request."""
+    return _CONCEPT_QA_KEYWORDS.search(message) is not None
 
 
 def _mentioned_components(message: str) -> list[ComponentIdentity]:
+    if _is_concept_question(message):
+        return []
     lower = message.casefold()
     candidates: list[tuple[int, int, int, ComponentIdentity]] = []
     for component_id, name, cas_number, aliases in COMPONENT_PATTERNS:
@@ -200,22 +272,43 @@ def _requested_components(message: str) -> list[ComponentIdentity]:
 
 def _has_positive_scope_marker(message: str, markers: tuple[str, ...]) -> bool:
     lower = message.casefold()
+    # Verbs that indicate the user wants to PERFORM an unsupported task
+    _REQUEST_VERBS = re.compile(
+        r"(?:请|帮我|请帮我|如何|怎么|怎样|想|需要|要求|能否|可否|"
+        r"帮|请给|求|麻烦)"
+        r"\s*"
+        r"(?:设计|模拟|优化|计算|做|搞|进行|开展|搭建|建立|开发)"
+    )
+    # Verbs that can form a request when combined with topic keywords
+    _REQUEST_VERBS_ALONE = re.compile(
+        r"(?:设计|模拟|优化|搭建|建立|开发|计算)"
+    )
+    # Additional unsupported topic keywords that can appear in flexible word order
+    _FLEXIBLE_EXCLUDED_TOPICS = (
+        "精馏塔",
+        "流程",
+        "塔设计",
+        "精馏设计",
+    )
     for marker in markers:
         escaped = re.escape(marker.casefold())
-        if marker.isascii():
-            pattern = rf"(?<![a-z0-9]){escaped}(?![a-z0-9])"
-        else:
-            pattern = escaped
-        for match in re.finditer(pattern, lower):
-            prefix = lower[max(0, match.start() - 40) : match.start()]
-            suffix = lower[match.end() : min(len(lower), match.end() + 16)]
-            negated_before = re.search(
-                r"(?:(?:without|excluding|exclude|free\s+of|no)"
-                r"(?:\s+(?:any|added?)){0,2}|non[-\s]?|不含|无|非)\s*$",
-                prefix,
-            )
-            negated_after = re.match(r"\s*-\s*free\b", suffix)
-            if negated_before is None and negated_after is None:
+        for match in re.finditer(escaped, lower):
+            context_start = max(0, match.start() - 30)
+            context_end = min(len(lower), match.end() + 10)
+            context = lower[context_start:context_end]
+            # Check if there's an active request verb nearby
+            if _REQUEST_VERBS.search(context):
+                return True
+            # Also check if the marker appears as a standalone topic
+            # (preceded by punctuation or start of string)
+            before = lower[max(0, match.start() - 5):match.start()]
+            if match.start() == 0 or re.search(r"[\s，,。.！!？?、；;：:（(]\s*$", before):
+                return True
+    # Check for flexible word-order combinations (e.g., "设计一个精馏塔")
+    # Only when there's an explicit request prefix + verb pattern
+    if _REQUEST_VERBS.search(lower):
+        for topic in _FLEXIBLE_EXCLUDED_TOPICS:
+            if topic in lower:
                 return True
     return False
 
@@ -256,11 +349,16 @@ class DeterministicProvider:
             "polymorph",
             "复杂临界",
             "流程设计",
+            "流程模拟",
+            "流程优化",
             "flowsheet",
             "flowsheet design",
             "process flowsheet design",
             "design a flowsheet",
             "design the flowsheet",
+            "design process",
+            "liquefaction",
+            "lng流程",
             "精馏塔设计",
             "full column design",
             "反应相平衡",
@@ -279,17 +377,45 @@ class DeterministicProvider:
             return Intent.SENSITIVITY_ANALYSIS
         if any(word in lower for word in ("工艺建议", "流程建议", "process recommendation")):
             return Intent.PROCESS_RECOMMENDATION
-        if any(word in lower for word in ("参数", "parameter")):
-            return Intent.PARAMETER_QUERY
-        if any(word in lower for word in ("数据", "database", "data query")):
+        if any(word in lower for word in ("查询数据", "获取数据", "查数据", "database", "data query")):
             return Intent.DATA_QUERY
+        if any(word in lower for word in ("参数", "parameter")):
+            if _is_parameter_query_question(message):
+                return Intent.PARAMETER_QUERY
+            if _is_model_comparison_question(message):
+                return Intent.MODEL_SELECTION_QA
+            if any(word in lower for word in ("区别", "选择", "difference", "select", "用什么")):
+                return Intent.MODEL_SELECTION_QA
         if _is_model_comparison_question(message):
             return Intent.MODEL_SELECTION_QA
-        if any(word in lower for word in ("计算", "曲线", "flash", "泡点", "露点", "共沸", "vle", "lle", "液液")):
-            return Intent.EQUILIBRIUM_CALCULATION
-        if any(word in lower for word in ("区别", "选择", "模型", "difference", "select")):
+        if any(word in lower for word in ("区别", "选择", "difference", "select", "用什么")):
             return Intent.MODEL_SELECTION_QA
+        if _is_active_calculation_request(message):
+            return Intent.EQUILIBRIUM_CALCULATION
         return Intent.CONCEPT_QA
+
+
+_CALCULATION_REQUEST_VERBS = ("计算", "算", "求", "calc", "compute", "simulate", "flash", "求算", "算出", "推算")
+_NON_REQUEST_CALCULATION_PREFIXES = (
+    "模型计算", "方程计算", "经计算", "通过计算", "由计算", "用计算",
+    "计算得到", "计算得出", "计算结果", "计算显示", "计算表明",
+    "经过计算", "理论计算", "模拟计算",
+)
+
+
+def _is_active_calculation_request(message: str) -> bool:
+    """Detect active calculation requests vs passive descriptions of calculations.
+
+    Active: "计算苯-甲苯气液平衡", "帮我求算", "calc the VLE"
+    Passive: "模型计算得到", "经计算表明", "计算结果显示"
+    """
+    lower = message.casefold()
+    for prefix in _NON_REQUEST_CALCULATION_PREFIXES:
+        if prefix.casefold() in lower:
+            return False
+    if any(verb.casefold() in lower for verb in _CALCULATION_REQUEST_VERBS):
+        return True
+    return False
 
     async def formulate_task(self, message: str, previous: TaskManifest | None = None) -> TaskManifest | None:
         lower = message.casefold()
@@ -589,8 +715,16 @@ class ConversationOrchestrator:
         if (
             deterministic_intent == Intent.MODEL_SELECTION_QA
             and provider_intent == Intent.EQUILIBRIUM_CALCULATION
-            and _is_model_comparison_question(message)
         ):
+            return deterministic_intent
+        if provider_intent == Intent.UNSUPPORTED_TASK and deterministic_intent in {
+            Intent.CONCEPT_QA,
+            Intent.MODEL_SELECTION_QA,
+            Intent.PARAMETER_QUERY,
+            Intent.DATA_QUERY,
+            Intent.RESULT_INTERPRETATION,
+            Intent.PROCESS_RECOMMENDATION,
+        }:
             return deterministic_intent
         return provider_intent
 

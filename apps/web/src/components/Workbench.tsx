@@ -1,6 +1,10 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import rehypeKatex from "rehype-katex";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import { exportUrl, rerunTask, sendChat } from "@/lib/api";
 import type { AgentStep, CalculationEnvelope, ChatResponse, TaskManifest } from "@/lib/types";
 import { AgentRuntime } from "./AgentRuntime";
@@ -177,30 +181,6 @@ export function Workbench() {
       </header>
 
       <section className="top-workspace">
-        <aside className="sidebar">
-          <div className="sidebar-section-title">
-            <p className="eyebrow">AI Chemistry Tasks</p>
-            <h2>任务模板</h2>
-          </div>
-          <div className="task-template-grid">
-            {examples.map((example) => (
-              <button key={example.code} className="task-template-card" onClick={() => setInput(example.prompt)}>
-                <div className="task-template-topline">
-                  <span>{example.code}</span>
-                  <small>{example.tag}</small>
-                </div>
-                <strong>{example.title}</strong>
-                <p>{example.prompt}</p>
-              </button>
-            ))}
-          </div>
-          <div className="scope-card">
-            <p className="eyebrow">当前边界</p>
-            <strong>非电解质分子体系</strong>
-            <small>VLE / Flash / 泡露点 / 共沸搜索</small>
-          </div>
-        </aside>
-
         <div className="center-column">
           <section className="conversation">
             <div className="section-heading">
@@ -213,15 +193,27 @@ export function Workbench() {
             <div className="conversation-body">
               <div className="messages" aria-live="polite">
                 {messages.map((message, index) => (
-                  <article className={message.role} key={`${message.role}-${index}`}>
-                    <label>{message.role === "agent" ? "AGENT" : "YOU"}</label>
-                    <p>{message.text}</p>
+                  <article className={`message-row ${message.role}`} key={`${message.role}-${index}`}>
+                    <div className="message-bubble">
+                      <label>{message.role === "agent" ? "AGENT" : "YOU"}</label>
+                      <div className="message-markdown">
+                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                          {message.text}
+                        </ReactMarkdown>
+                      </div>
+                    </div>
                   </article>
                 ))}
                 {loading && (
-                  <article className="agent">
-                    <label>ENGINE</label>
-                    <p>正在理解任务、调度模型、调用热力学计算并执行验证...</p>
+                  <article className="message-row agent">
+                    <div className="message-bubble">
+                      <label>ENGINE</label>
+                      <div className="message-markdown">
+                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                          {"正在理解任务、调度模型、调用热力学计算并执行验证..."}
+                        </ReactMarkdown>
+                      </div>
+                    </div>
                   </article>
                 )}
               </div>

@@ -43,6 +43,98 @@ _NON_COMPONENT_TERMS = {
     "vapor",
     "with",
 }
+_CHINESE_ALIAS_MAP: dict[str, str] = {
+    "水": "water",
+    "甲烷": "methane",
+    "乙烷": "ethane",
+    "丙烷": "propane",
+    "丁烷": "butane",
+    "异丁烷": "isobutane",
+    "氮气": "nitrogen",
+    "氧气": "oxygen",
+    "氢气": "hydrogen",
+    "空气": "air",
+    "苯": "benzene",
+    "甲苯": "toluene",
+    "二甲苯": "xylene",
+    "邻二甲苯": "o-xylene",
+    "间二甲苯": "m-xylene",
+    "对二甲苯": "p-xylene",
+    "乙苯": "ethylbenzene",
+    "苯乙烯": "styrene",
+    "乙醇": "ethanol",
+    "甲醇": "methanol",
+    "正丁醇": "n-butanol",
+    "异丁醇": "isobutanol",
+    "正丙醇": "n-propanol",
+    "异丙醇": "isopropanol",
+    "正戊醇": "n-pentanol",
+    "正己烷": "n-hexane",
+    "正庚烷": "n-heptane",
+    "正辛烷": "n-octane",
+    "环己烷": "cyclohexane",
+    "环戊烷": "cyclopentane",
+    "丙酮": "acetone",
+    "丁酮": "2-butanone",
+    "甲基异丁基酮": "methyl isobutyl ketone",
+    "乙酸乙酯": "ethyl acetate",
+    "乙酸甲酯": "methyl acetate",
+    "乙酸": "acetic acid",
+    "氯仿": "chloroform",
+    "四氯化碳": "carbon tetrachloride",
+    "二氯甲烷": "dichloromethane",
+    "三氯乙烯": "trichloroethylene",
+    "四氯乙烯": "tetrachloroethylene",
+    "乙醚": "diethyl ether",
+    "甲基叔丁基醚": "methyl tert-butyl ether",
+    "丙烯腈": "acrylonitrile",
+    "苯胺": "aniline",
+    "苯酚": "phenol",
+    "呋喃": "furan",
+    "噻吩": "thiophene",
+    "吡啶": "pyridine",
+    "吡咯": "pyrrole",
+    "吗啉": "morpholine",
+    "哌嗪": "piperazine",
+    "二甲基甲酰胺": "dimethylformamide",
+    "二甲基亚砜": "dimethyl sulfoxide",
+    "N甲基吡咯烷酮": "n-methyl-2-pyrrolidone",
+    "碳酸二甲酯": "dimethyl carbonate",
+    "碳酸乙酯": "diethyl carbonate",
+    "甲酸": "formic acid",
+    "丙酸": "propionic acid",
+    "丁酸": "butyric acid",
+    "丙烯酸": "acrylic acid",
+    "氨水": "ammonia",
+    "液氨": "ammonia",
+    "二氧化硫": "sulfur dioxide",
+    "二氧化碳": "carbon dioxide",
+    "一氧化碳": "carbon monoxide",
+    "硫化氢": "hydrogen sulfide",
+    "氯化氢": "hydrogen chloride",
+    "溴化氢": "hydrogen bromide",
+    "氟化氢": "hydrogen fluoride",
+    "硝酸": "nitric acid",
+    "硫酸": "sulfuric acid",
+    "盐酸": "hydrochloric acid",
+    "磷酸": "phosphoric acid",
+    "氢氧化钠": "sodium hydroxide",
+    "氢氧化钾": "potassium hydroxide",
+    "氯化钠": "sodium chloride",
+    "氯化钾": "potassium chloride",
+    "碳酸钠": "sodium carbonate",
+    "碳酸氢钠": "sodium bicarbonate",
+    "硫酸钠": "sodium sulfate",
+    "硫酸铜": "copper sulfate",
+    "氯化钙": "calcium chloride",
+    "硝酸铵": "ammonium nitrate",
+    "尿素": "urea",
+    "甘油": "glycerol",
+    "葡萄糖": "glucose",
+    "蔗糖": "sucrose",
+    "果糖": "fructose",
+}
+_CHINESE_NAME_PATTERN = re.compile(r"[\u4e00-\u9fff]+")
 _CAS_PATTERN = re.compile(r"(?<!\d)(\d{2,7}-\d{2}-\d)(?!\d)")
 _NAME_PATTERN = re.compile(r"(?<![A-Za-z0-9])((?=[A-Za-z0-9-]*[A-Za-z])[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)(?![A-Za-z0-9])")
 _MAX_NAME_WORDS = 4
@@ -139,6 +231,31 @@ def _has_negated_chemical_role(message: str, start: int) -> bool:
     )
 
 
+def _has_chinese_chemical_role_evidence(message: str, start: int, end: int) -> bool:
+    """Check if a Chinese component alias appears in a chemical context.
+
+    More lenient than the English check: Chinese aliases come from a curated map,
+    so they need less contextual evidence. Check for separators, adjacent components,
+    or chemical keywords nearby.
+    """
+    prefix = message[max(0, start - 32) : start]
+    suffix = message[end : min(len(message), end + 32)]
+    separators = {"-", "—", "/", "+", "、", "和", "与", "及", "）", ")"}
+    if prefix and prefix[-1] in separators:
+        return True
+    if suffix and suffix[0] in separators:
+        return True
+    chemical_keywords = (
+        "体系", "物系", "溶液", "混合物", "平衡", "相", "气液", "液液",
+        "计算", "模拟", "闪蒸", "泡点", "露点", "曲线", "组成", "浓度",
+    )
+    combined = prefix + suffix
+    for kw in chemical_keywords:
+        if kw in combined:
+            return True
+    return False
+
+
 def has_chemical_role_evidence(message: str, start: int, end: int) -> bool:
     prefix = message[max(0, start - 64) : start].casefold()
     suffix = message[end : min(len(message), end + 48)].casefold()
@@ -153,13 +270,14 @@ def has_chemical_role_evidence(message: str, start: int, end: int) -> bool:
         r"mixture|system|components?)\s+(?:of|for)\s+(?:the\s+)?|"
         r"(?:use|using)\s+[a-z0-9-]+\s+for\s+(?:the\s+)?|"
         r"(?:mixture|system|components?)\s+(?:containing|contains|with)\s+(?:the\s+)?|"
-        r"计算|模拟|物系|组分|含)\s*$",
+        r"计算|模拟|物系|组分|含|体系|如|包括|例如|对于)\s*$",
         prefix,
     )
     after = re.match(
         r"\s*(?:and\b|with\b|at\b|(?:tp\s*)?flash\b|bubble\b|dew\b|vle\b|"
         r"azeotrope\b|equilibrium\b|composition\b|t-x-y\b|p-x-y\b|"
-        r"和|与|、|在|的|常压|汽液|液液|泡点|露点|相平衡|曲线|闪蒸)",
+        r"和|与|、|在|的|常压|汽液|液液|泡点|露点|相平衡|曲线|闪蒸|"
+        r"[-/—+]|[)）]|及)",
         suffix,
     )
     return before is not None or after is not None
@@ -204,11 +322,70 @@ def _has_scoped_list_role_evidence(message: str, start: int, end: int) -> bool:
     return scoped_prefix is not None and complete_suffix is not None
 
 
+_NON_COMPONENT_CJK_TERMS = frozenset({"水果", "水平", "水分", "水泥", "水晶", "水产", "水电", "水文"})
+
+_CONCEPT_QA_KEYWORDS = re.compile(
+    r"(分析|解释|原理|概念|意义|为什么|是什么|介绍|阐述|理解|讲解|说明|讨论|"
+    r"对比|比较|区别|联系|特点|特征|应用|用途|案例|例子)"
+)
+
+
+def _is_concept_question(message: str) -> bool:
+    """Check if a message is a concept Q&A rather than a calculation request."""
+    return _CONCEPT_QA_KEYWORDS.search(message) is not None
+
+
+def _find_chinese_component_aliases(message: str) -> list[tuple[int, int, str]]:
+    """Find Chinese component names in a message and return (start, end, english_name) tuples.
+
+    Handles both standalone names (e.g. "水") and joined names (e.g. "水-正丁醇").
+    Also finds names embedded in longer Chinese spans (e.g. "如水" contains "水").
+
+    Skips component identification for concept questions.
+    """
+    if _is_concept_question(message):
+        return []
+    results: list[tuple[int, int, str]] = []
+    seen_positions: set[tuple[int, int]] = set()
+    for chinese_alias, english_name in _CHINESE_ALIAS_MAP.items():
+        alias_len = len(chinese_alias)
+        idx = 0
+        while True:
+            idx = message.find(chinese_alias, idx)
+            if idx < 0:
+                break
+            end = idx + alias_len
+            if (idx, end) not in seen_positions:
+                if not _is_part_of_non_component_term(message, idx, end):
+                    seen_positions.add((idx, end))
+                    results.append((idx, end, english_name))
+            idx += 1
+    results.sort(key=lambda x: x[0])
+    return results
+
+
+def _is_part_of_non_component_term(message: str, start: int, end: int) -> bool:
+    """Check if a matched component alias is part of a non-component Chinese term."""
+    for term in _NON_COMPONENT_CJK_TERMS:
+        term_start = 0
+        while True:
+            term_start = message.find(term, term_start)
+            if term_start < 0:
+                break
+            term_end = term_start + len(term)
+            if start >= term_start and end <= term_end:
+                return True
+            term_start += 1
+    return False
+
+
 def resolve_literal_components(message: str) -> list[tuple[int, ComponentIdentity]]:
     """Resolve literal identities using longest verified-name spans and CAS numbers."""
-    candidates: list[tuple[int, int, str, bool]] = [
-        (match.start(1), match.end(1), match.group(1), True) for match in _CAS_PATTERN.finditer(message)
+    candidates: list[tuple[int, int, str, bool, bool]] = [
+        (match.start(1), match.end(1), match.group(1), True, False) for match in _CAS_PATTERN.finditer(message)
     ]
+    for start, end, english_name in _find_chinese_component_aliases(message):
+        candidates.append((start, end, english_name, True, True))
     name_matches = list(_NAME_PATTERN.finditer(message))
     for start_index, first in enumerate(name_matches):
         if first.group(1).casefold() in _NON_COMPONENT_TERMS:
@@ -224,10 +401,10 @@ def resolve_literal_components(message: str) -> list[tuple[int, ComponentIdentit
                     break
             literal = " ".join(words)
             if len(literal) >= 3:
-                candidates.append((first.start(1), last.end(1), literal, False))
+                candidates.append((first.start(1), last.end(1), literal, False, False))
 
-    verified_spans: list[tuple[int, int, ComponentIdentity, bool]] = []
-    for start, end, literal, is_cas in candidates:
+    verified_spans: list[tuple[int, int, ComponentIdentity, bool, bool]] = []
+    for start, end, literal, is_cas, is_chinese in candidates:
         resolved = resolve_external_component(literal)
         if resolved is None or resolved.cas_number is None:
             continue
@@ -235,23 +412,27 @@ def resolve_literal_components(message: str) -> list[tuple[int, ComponentIdentit
             continue
         if not is_cas and not _is_verified_alias(literal, resolved):
             continue
-        verified_spans.append((start, end, resolved, is_cas))
+        verified_spans.append((start, end, resolved, is_cas, is_chinese))
 
-    selected: list[tuple[int, int, ComponentIdentity, bool]] = []
-    for start, end, resolved, is_cas in sorted(
+    selected: list[tuple[int, int, ComponentIdentity, bool, bool]] = []
+    for start, end, resolved, is_cas, is_chinese in sorted(
         verified_spans,
         key=lambda item: (-(item[1] - item[0]), item[0]),
     ):
-        if any(start < selected_end and end > selected_start for selected_start, selected_end, _, _ in selected):
+        if any(start < selected_end and end > selected_start for selected_start, selected_end, _, _, _ in selected):
             continue
-        selected.append((start, end, resolved, is_cas))
+        selected.append((start, end, resolved, is_cas, is_chinese))
 
     selected.sort(key=lambda item: item[0])
-    grounded_indexes = {
-        index
-        for index, (start, end, _, is_cas) in enumerate(selected)
-        if has_chemical_role_evidence(message, start, end)
-    }
+    grounded_indexes: set[int] = set()
+    for index, (start, end, _, _is_cas, is_chinese) in enumerate(selected):
+        if is_chinese:
+            if _has_chinese_chemical_role_evidence(message, start, end):
+                grounded_indexes.add(index)
+        else:
+            if has_chemical_role_evidence(message, start, end):
+                grounded_indexes.add(index)
+
     group_start = 0
     for index in range(len(selected)):
         group_ends = index == len(selected) - 1 or not _is_component_list_separator(
@@ -270,7 +451,7 @@ def resolve_literal_components(message: str) -> list[tuple[int, ComponentIdentit
         group_start = index + 1
 
     resolved_by_cas: dict[str, tuple[int, ComponentIdentity]] = {}
-    for index, (position, _, resolved, _) in enumerate(selected):
+    for index, (position, _, resolved, _, _) in enumerate(selected):
         if index not in grounded_indexes:
             continue
         assert resolved.cas_number is not None

@@ -94,10 +94,61 @@ def _system_proxy_url() -> str | None:
     return proxies.get("https") or proxies.get("http")
 
 
-def _contains_ungrounded_claim(text: str) -> bool:
-    if _EXTERNAL_REFERENCE.search(text):
+_THERMO_QA_KEYWORDS: frozenset[str] = frozenset({
+    "相平衡", "气液", "液液", "vle", "lle", "flash", "泡点", "露点", "共沸",
+    "热力学", "活度", "逸度", "相图", "antoine",
+    "nrtl", "wilson", "uniquac", "peng", "raoult", "ideal",
+    "benzene", "toluene", "ethanol", "acetone", "methanol",
+    "苯", "甲苯", "乙醇", "丙酮", "甲醇",
+    "phase equilibrium", "bubble point", "dew point", "azeotrope",
+    "thermodynamic", "activity coefficient", "fugacity",
+    "equation of state", "binary interaction",
+})
+
+_CALCULATION_KEYWORDS: frozenset[str] = frozenset({
+    "calc", "compute", "simulate",
+    "求算", "算出", "推算",
+    "T-x-y", "P-x-y",
+})
+_CALCULATION_REQUEST_PATTERN = re.compile(
+    r"(?:请|帮我|请帮我|试|试着)?\s*(?:计算(?:一下|一下下)?|算一算|求解|试算|求(?:解|算)?|推算)"
+)
+_NON_REQUEST_CALCULATION_PREFIX = re.compile(
+    r"(?:模型|方程|公式|理论|方法|系统|体系|过程)的?\s*(?:计算|算)|"
+    r"(?:经过|经|通过|由|用)\s*(?:模型|理论|公式)?\s*(?:计算|推算)|"
+    r"(?:计算|推算)(?:得到|得出|显示|表明|结果|可知|可见)"
+)
+
+
+def _is_thermo_question(question: str) -> bool:
+    lower = question.casefold()
+    return any(kw.casefold() in lower for kw in _THERMO_QA_KEYWORDS)
+
+
+def _is_calculation_question(question: str) -> bool:
+    lower = question.casefold()
+    if any(kw.casefold() in lower for kw in _CALCULATION_KEYWORDS):
         return True
-    return bool(_NUMERIC_TOKEN.search(text))
+    if _CALCULATION_REQUEST_PATTERN.search(question):
+        if not _NON_REQUEST_CALCULATION_PREFIX.search(question):
+            return True
+    return False
+
+
+def _contains_ungrounded_claim(text: str, check_numbers: bool = True) -> bool:
+    """Only check external references for calculation questions.
+
+    Concept Q&A (e.g. 'what is activity coefficient') should allow
+    mentions of Lewis, IUPAC, textbooks, etc. These are legitimate
+    knowledge references, not fabricated data. Only calculation tasks
+    must be strict: any number or citation not from thermo_engine is
+    potentially fabricated.
+    """
+    if check_numbers:
+        if _EXTERNAL_REFERENCE.search(text):
+            return True
+        return bool(_NUMERIC_TOKEN.search(text))
+    return False
 
 
 def _normalize_intent_value(raw_value: str) -> str:
@@ -192,6 +243,10 @@ class ConstrainedLLMProvider:
         )
         if strict and _contains_ungrounded_claim(value):
             return [EvidenceStatement(category="Warning", text=_WITHHELD_TEXT)]
+        # Only check for calculation questions, not concept Q&A
+        if _is_thermo_question(message) and _is_calculation_question(message):
+            if _contains_ungrounded_claim(value, check_numbers=True):
+                return [EvidenceStatement(category="Warning", text=_WITHHELD_TEXT)]
         if _contains_ungrounded_claim(value):
             value += "\n\n（以上涉及数值未经确定性引擎验证，请以计算结果为准。）"
         return [EvidenceStatement(category="Knowledge", text=value)]
@@ -306,17 +361,21 @@ class DeepSeekProvider(ConstrainedLLMProvider):
         )
         return [EvidenceStatement(category="Inference", text=value)]
 
-        return [EvidenceStatement(category="Inference", text=value)]
-
     async def answer_with_evidence(self, message: str, strict: bool = False) -> list[EvidenceStatement]:
-        """普通聊天宽松回答；strict=True 时数值/引用扣留。"""
+        """Override: answer both thermodynamics knowledge and general questions."""
         value = await self._request(
-            "Answer concise thermodynamics knowledge questions. "
+            "Answer the user's question concisely and helpfully. "
+            "If the question is about thermodynamics or phase equilibrium, answer with domain expertise. "
+            "If the question is general, answer naturally. "
             "Do not cite external sources. Keep answers informative.",
             message,
         )
         if strict and _contains_ungrounded_claim(value):
             return [EvidenceStatement(category="Warning", text=_WITHHELD_TEXT)]
+        if _is_thermo_question(message):
+            check_numbers = _is_calculation_question(message)
+            if _contains_ungrounded_claim(value, check_numbers=check_numbers):
+                return [EvidenceStatement(category="Warning", text=_WITHHELD_TEXT)]
         if _contains_ungrounded_claim(value):
             value += "\n\n（以上涉及数值未经确定性引擎验证，请以计算结果为准。）"
         return [EvidenceStatement(category="Knowledge", text=value)]

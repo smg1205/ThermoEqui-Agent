@@ -8,6 +8,10 @@ import json
 import logging
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable
+
+from dotenv import load_dotenv
+
+load_dotenv()
 from contextlib import asynccontextmanager
 from uuid import uuid4
 

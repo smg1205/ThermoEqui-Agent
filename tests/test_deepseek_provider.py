@@ -616,7 +616,7 @@ async def test_deepseek_provider_withholds_ungrounded_numbers_and_citations() ->
         transport=httpx.MockTransport(respond),
     )
 
-    statements = await provider.answer_with_evidence("解释苯和甲苯的汽液平衡")
+    statements = await provider.answer_with_evidence("计算苯和甲苯的汽化率")
 
     assert statements[0].category == "Warning"
     assert ".5" not in statements[0].text
