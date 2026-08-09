@@ -1,8 +1,9 @@
 model_name: Ideal/Raoult
 family: activity_coefficient
 supported_tasks: [VLE, FLASH]
-excluded_systems: [electrolyte, strong_nonideal, liquid_liquid_split]
+excluded_systems: [electrolyte, strong_nonideal, liquid_liquid_split, reactive, SLE, polymer, hydrate, petroleum_pseudocomponent, VLLE]
 requires_binary_parameters: false
 pressure_regime: [low]
 validation_requirements: [composition_balance, equilibrium_residual, convergence]
 implementation_status: available
+production_ready: true

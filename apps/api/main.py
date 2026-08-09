@@ -30,8 +30,8 @@ from agent.providers import (
     LLMProviderOutputError,
     OpenAIProvider,
 )
-from agent.router import load_model_cards, recommend_models
-from database.session import Repository, initialize_database
+from agent.router import available_parameter_models_for_task, load_model_cards, recommend_models
+from database.session import ParameterSetConflictError, Repository, initialize_database
 from schemas.domain import (
     CalculationEnvelope,
     CalculationResult,
@@ -42,7 +42,9 @@ from schemas.domain import (
     ModelCard,
     ModelRecommendation,
     ParameterSet,
+    RunListResponse,
     RunRecord,
+    RunStatus,
     TaskManifest,
     ValidationReport,
 )
@@ -52,6 +54,11 @@ from thermo_engine.service import validate_equilibrium_result
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(levelname)s %(message)s")
 logger = logging.getLogger("thermoequi.api")
 repository = Repository()
+
+
+def parameter_availability(task: TaskManifest) -> set[str]:
+    parameter_sets = repository.search_parameter_sets(None, [])
+    return available_parameter_models_for_task(task, parameter_sets)
 
 
 def configured_provider() -> LLMProvider:
@@ -100,7 +107,20 @@ app.add_middleware(
 async def request_context(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
     request_id = request.headers.get("X-Request-ID", str(uuid4()))
     request.state.request_id = request_id
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        logger.exception("Unhandled server error", exc_info=exc)
+        payload = ErrorResponse(
+            error=ErrorBody(
+                code="internal_server_error",
+                message="Internal server error.",
+                request_id=request_id,
+            )
+        )
+        error_response = JSONResponse(status_code=500, content=payload.model_dump(mode="json"))
+        error_response.headers["X-Request-ID"] = request_id
+        return error_response
     response.headers["X-Request-ID"] = request_id
     return response
 
@@ -155,6 +175,18 @@ async def value_error(request: Request, exc: ValueError) -> JSONResponse:
     return JSONResponse(status_code=422, content=payload.model_dump(mode="json"))
 
 
+@app.exception_handler(ParameterSetConflictError)
+async def parameter_set_conflict(request: Request, exc: ParameterSetConflictError) -> JSONResponse:
+    payload = ErrorResponse(
+        error=ErrorBody(
+            code="duplicate_parameter_set",
+            message=str(exc),
+            request_id=request.state.request_id,
+        )
+    )
+    return JSONResponse(status_code=409, content=payload.model_dump(mode="json"))
+
+
 @app.exception_handler(RequestValidationError)
 async def request_validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
     payload = ErrorResponse(
@@ -194,9 +226,13 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
     response = await orchestrator.chat(body.message, body.conversation_id)
     response.request_id = request.state.request_id
     payload = response.model_dump(mode="json")
-    repository.save_chat(response.conversation_id, body.message, payload)
-    if response.calculation:
-        repository.save_run(response.calculation, request.state.request_id)
+    repository.save_chat_and_run(
+        response.conversation_id,
+        body.message,
+        payload,
+        response.calculation,
+        request.state.request_id,
+    )
     return response
 
 
@@ -213,7 +249,7 @@ async def parse_task(body: ChatRequest) -> ParseResponse:
 
 @app.post("/api/models/recommend", response_model=list[ModelRecommendation])
 def model_recommendations(task: TaskManifest) -> list[ModelRecommendation]:
-    return recommend_models(task)
+    return recommend_models(task, available_parameter_models=parameter_availability(task))
 
 
 @app.get("/api/models")
@@ -235,7 +271,7 @@ def search_parameters(model_name: str | None = None, components: list[str] = Que
 def execute(task: TaskManifest, request_id: str) -> CalculationEnvelope:
     if task.original_question is None:
         task = task.model_copy(update={"original_question": "Structured API submission"})
-    envelope = execute_task(task)
+    envelope = execute_task(task, available_parameter_models=parameter_availability(task))
     repository.save_run(envelope, request_id)
     return envelope
 
@@ -286,6 +322,16 @@ def lle(task: TaskManifest, request: Request) -> CalculationEnvelope:
 @app.post("/api/validation", response_model=ValidationReport)
 def validation(result: CalculationResult) -> ValidationReport:
     return validate_equilibrium_result(result)
+
+
+@app.get("/api/runs", response_model=RunListResponse)
+def list_runs(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    status: RunStatus | None = None,
+) -> RunListResponse:
+    items, total = repository.list_runs(limit=limit, offset=offset, status=status)
+    return RunListResponse(items=items, total=total, limit=limit, offset=offset)
 
 
 @app.get("/api/runs/{run_id}", response_model=RunRecord)

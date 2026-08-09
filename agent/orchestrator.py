@@ -319,6 +319,29 @@ class ConversationState:
     run_ids: list[str] = field(default_factory=list)
 
 
+_CALCULATION_REQUEST_VERBS = ("计算", "算", "求", "calc", "compute", "simulate", "flash", "求算", "算出", "推算")
+_NON_REQUEST_CALCULATION_PREFIXES = (
+    "模型计算", "方程计算", "经计算", "通过计算", "由计算", "用计算",
+    "计算得到", "计算得出", "计算结果", "计算显示", "计算表明",
+    "经过计算", "理论计算", "模拟计算",
+)
+
+
+def _is_active_calculation_request(message: str) -> bool:
+    """Detect active calculation requests vs passive descriptions of calculations.
+
+    Active: "计算苯-甲苯气液平衡", "帮我求算", "calc the VLE"
+    Passive: "模型计算得到", "经计算表明", "计算结果显示"
+    """
+    lower = message.casefold()
+    for prefix in _NON_REQUEST_CALCULATION_PREFIXES:
+        if prefix.casefold() in lower:
+            return False
+    if any(verb.casefold() in lower for verb in _CALCULATION_REQUEST_VERBS):
+        return True
+    return False
+
+
 class DeterministicProvider:
     """No-key provider for supported demonstrations and safe refusals."""
 
@@ -393,30 +416,6 @@ class DeterministicProvider:
         if _is_active_calculation_request(message):
             return Intent.EQUILIBRIUM_CALCULATION
         return Intent.CONCEPT_QA
-
-
-_CALCULATION_REQUEST_VERBS = ("计算", "算", "求", "calc", "compute", "simulate", "flash", "求算", "算出", "推算")
-_NON_REQUEST_CALCULATION_PREFIXES = (
-    "模型计算", "方程计算", "经计算", "通过计算", "由计算", "用计算",
-    "计算得到", "计算得出", "计算结果", "计算显示", "计算表明",
-    "经过计算", "理论计算", "模拟计算",
-)
-
-
-def _is_active_calculation_request(message: str) -> bool:
-    """Detect active calculation requests vs passive descriptions of calculations.
-
-    Active: "计算苯-甲苯气液平衡", "帮我求算", "calc the VLE"
-    Passive: "模型计算得到", "经计算表明", "计算结果显示"
-    """
-    lower = message.casefold()
-    for prefix in _NON_REQUEST_CALCULATION_PREFIXES:
-        if prefix.casefold() in lower:
-            return False
-    if any(verb.casefold() in lower for verb in _CALCULATION_REQUEST_VERBS):
-        return True
-    return False
-
     async def formulate_task(self, message: str, previous: TaskManifest | None = None) -> TaskManifest | None:
         lower = message.casefold()
         component_list = _requested_components(message)
@@ -432,14 +431,15 @@ def _is_active_calculation_request(message: str) -> bool:
             assumptions = [*previous.assumptions]
             if pressure_assumption and pressure_assumption not in assumptions:
                 assumptions.append(pressure_assumption)
-            return previous.model_copy(
-                update={
-                    "task_id": str(uuid4()),
-                    "conditions": conditions,
-                    "assumptions": assumptions,
-                    "original_question": message,
-                }
-            )
+            updates = {
+                "task_id": str(uuid4()),
+                "conditions": conditions,
+                "assumptions": assumptions,
+                "original_question": message,
+            }
+            if component_list:
+                updates["components"] = component_list
+            return previous.model_copy(update=updates)
         if not component_list:
             return None
         calculation_type = self._calculation_type(lower)
@@ -619,10 +619,7 @@ class ConversationOrchestrator:
             Intent.RESULT_INTERPRETATION,
         }:
             strict = intent in {Intent.PARAMETER_QUERY, Intent.DATA_QUERY}   # 新增
-            try:
-                statements = await self.provider.answer_with_evidence(message, strict=strict)
-            except (LLMProviderError, LLMProviderOutputError):
-                statements = []
+            statements = await self.provider.answer_with_evidence(message, strict=strict)
             if not statements or statements[0].category == "Warning":
                 skill_statements = answer_with_skills(message, intent)
                 if skill_statements:

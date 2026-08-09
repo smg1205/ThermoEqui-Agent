@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import numpy as np
+
+from schemas.domain import ComponentIdentity, ParameterSet
+
 
 def reverse_binary_parameter_direction(
     parameters: dict[str, float], directional_pairs: list[tuple[str, str]]
@@ -14,3 +18,92 @@ def reverse_binary_parameter_direction(
         reversed_parameters[forward] = parameters[reverse]
         reversed_parameters[reverse] = parameters[forward]
     return reversed_parameters
+
+
+def has_chemsep_kij(components: list[ComponentIdentity]) -> bool:
+    """Return True when every binary pair has a reviewed ChemSep PR kij."""
+    from thermo.interaction_parameters import IPDB
+
+    cas_numbers = [component.cas_number for component in components]
+    if not all(cas_numbers):
+        return False
+    for i in range(len(cas_numbers)):
+        for j in range(i + 1, len(cas_numbers)):
+            if not IPDB.has_ip_specific(
+                "ChemSep PR",
+                [cas_numbers[i], cas_numbers[j]],
+                "kij",
+            ):
+                return False
+    return True
+
+
+def _required_parameter(parameters: dict[str, float], keys: tuple[str, ...]) -> float:
+    normalized = {key.casefold(): value for key, value in parameters.items()}
+    for key in keys:
+        if key.casefold() in normalized:
+            return normalized[key.casefold()]
+    raise ValueError(f"Missing one of {keys} in the parameter set.")
+
+
+def parameter_set_to_backend_params(
+    parameter_set: ParameterSet,
+    model_name: str,
+    component_names: list[str],
+) -> dict[str, object]:
+    """Convert a reviewed ParameterSet into the backend gamma coefficient format."""
+    if parameter_set.model_name.casefold() != model_name.casefold():
+        raise ValueError(
+            f"Parameter set model {parameter_set.model_name!r} does not match {model_name!r}."
+        )
+    names = [name.casefold() for name in component_names]
+    order = [name.casefold() for name in parameter_set.component_order]
+    if len(names) != 2 or order != names:
+        raise ValueError("Only binary component parameter sets can be converted.")
+
+    parameters = parameter_set.parameters
+    form = parameter_set.parameter_form.casefold()
+    tau = np.zeros((2, 2, 6))
+    if form in {"nrtl", "nrtl binary"}:
+        tau[0, 1, 0] = _required_parameter(parameters, ("tau12", "tau_12"))
+        tau[1, 0, 0] = _required_parameter(parameters, ("tau21", "tau_21"))
+        alpha = parameters.get("alpha", 0.3)
+        alpha_coeffs = np.zeros((2, 2, 2))
+        alpha_coeffs[0, 1, 0] = alpha
+        alpha_coeffs[1, 0, 0] = alpha
+        return {"tau_coeffs": tau, "alpha_coeffs": alpha_coeffs}
+    if form in {"uniquac", "uniquac binary"}:
+        tau[0, 1, 0] = _required_parameter(parameters, ("tau12", "tau_12"))
+        tau[1, 0, 0] = _required_parameter(parameters, ("tau21", "tau_21"))
+        return {
+            "tau_coeffs": tau,
+            "rs": np.asarray(
+                [
+                    _required_parameter(parameters, ("r1", "r_1")),
+                    _required_parameter(parameters, ("r2", "r_2")),
+                ],
+                dtype=float,
+            ),
+            "qs": np.asarray(
+                [
+                    _required_parameter(parameters, ("q1", "q_1")),
+                    _required_parameter(parameters, ("q2", "q_2")),
+                ],
+                dtype=float,
+            ),
+        }
+    if form in {"wilson", "wilson binary"}:
+        lambda_coeffs = np.zeros((2, 2, 6))
+        lambda_coeffs[0, 1, 0] = _required_parameter(parameters, ("lambda12", "lambda_12"))
+        lambda_coeffs[1, 0, 0] = _required_parameter(parameters, ("lambda21", "lambda_21"))
+        return {
+            "Lambda_coeffs": lambda_coeffs,
+            "volumes": np.asarray(
+                [
+                    _required_parameter(parameters, ("v1", "v_1")),
+                    _required_parameter(parameters, ("v2", "v_2")),
+                ],
+                dtype=float,
+            ),
+        }
+    raise ValueError(f"Unsupported parameter_form {parameter_set.parameter_form!r}.")

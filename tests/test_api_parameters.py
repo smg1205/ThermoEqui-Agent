@@ -40,6 +40,8 @@ def test_create_parameter_set_and_search_by_components() -> None:
             units={"tau12": "dimensionless", "tau21": "dimensionless", "alpha": "dimensionless"},
             equilibrium_types=["VLE"],
             source_type="literature",
+            source_title="Test NRTL source",
+            source_identifier="https://example.invalid/nrtl",
             quality_level="reviewed",
         )
         response = client.post("/api/parameters", json=parameter_set.model_dump(mode="json"))

@@ -117,6 +117,7 @@ class TaskManifest(BaseModel):
     model_name: str | None = None
     points: int = Field(default=21, ge=2, le=501)
     original_question: str | None = None
+    parameters: list[ParameterSet] = Field(default_factory=list)
 
     @field_validator("calculation_type", mode="before")
     @classmethod
@@ -148,6 +149,7 @@ class ModelCard(BaseModel):
     pressure_regime: list[str]
     validation_requirements: list[str]
     implementation_status: Literal["available", "contract_only", "planned"]
+    production_ready: bool
 
 
 class ParameterSet(BaseModel):
@@ -387,4 +389,5 @@ class RunListResponse(BaseModel):
     offset: int = Field(ge=0)
 
 
+TaskManifest.model_rebuild()
 CalculationEnvelope.model_rebuild()

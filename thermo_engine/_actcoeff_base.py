@@ -4,6 +4,8 @@ Auto-looks up binary parameters from actcoeff_params.py for known systems.
 """
 from __future__ import annotations
 
+import json
+
 import numpy as np
 from scipy.optimize import brentq
 
@@ -12,6 +14,7 @@ from schemas.domain import (
 )
 from thermo_engine.activity_coeff_utils import build_result, psat_Pa, temperature_bounds
 from thermo_engine.errors import ThermoEquiError
+from thermo_engine.parameters import parameter_set_to_backend_params
 
 
 
@@ -23,55 +26,107 @@ class ActCoeffBackend:
     _params_lookup = None  # Set by subclass: lookup_nrtl, lookup_uniquac, or lookup_wilson
 
     def parameter_sources(self, request: TaskManifest) -> list[dict[str, str]]:
-        return [{"source": "built-in parameter database via actcoeff_params.py"}]
+        params = self._params(request)
+        parameter_set = params.get("_parameter_set")
+        if parameter_set is not None:
+            return [
+                {
+                    "component": " / ".join(parameter_set.component_order),
+                    "property": f"{self.model_name} interaction parameters",
+                    "parameter_form": parameter_set.parameter_form,
+                    "parameter_values": json.dumps(parameter_set.parameters),
+                    "parameter_set_id": parameter_set.parameter_set_id,
+                    "source_title": parameter_set.source_title or "user-supplied",
+                    "source_identifier": parameter_set.source_identifier or "user-supplied",
+                    "quality_level": parameter_set.quality_level,
+                    "temperature_range_K": str(parameter_set.temperature_range_K),
+                    "pressure_range_kPa": str(parameter_set.pressure_range_kPa),
+                }
+            ]
+        database = params.get("_database_params")
+        if database is not None:
+            return [
+                {
+                    "component": " / ".join(component.name for component in request.components),
+                    "property": f"{self.model_name} interaction parameters",
+                    "source_title": database.get("source", "built-in parameter database"),
+                    "source_identifier": database.get("source", "thermo_engine/actcoeff_params.py"),
+                    "temperature_range_K": str(database.get("T_range_K")),
+                    "pressure_range_kPa": str(database.get("P_range_kPa")),
+                    "parameter_values": json.dumps(
+                        {
+                            key: value
+                            for key, value in database.items()
+                            if key not in {"source", "T_range_K", "P_range_kPa"}
+                        },
+                        default=str,
+                    ),
+                }
+            ]
+        return []
 
     def _gamma(self, xs: np.ndarray, T: float, names: list[str], params: dict | None) -> np.ndarray:
         raise NotImplementedError
 
     def _params(self, req: TaskManifest) -> dict | None:
         """Get model-specific parameters. Auto-lookup from built-in database, fallback to req.parameters."""
-        # Step 1: Try built-in parameter lookup
         names = [c.name for c in req.components]
+        model_sets = [
+            parameter_set
+            for parameter_set in req.parameters
+            if parameter_set.model_name.casefold() == self.model_name.casefold()
+        ]
+        if model_sets:
+            for parameter_set in model_sets:
+                order = [name.casefold() for name in parameter_set.component_order]
+                if order == [name.casefold() for name in names]:
+                    try:
+                        converted = parameter_set_to_backend_params(parameter_set, self.model_name, names)
+                    except ValueError as error:
+                        raise ThermoEquiError(
+                            FailureType.MISSING_PARAMETERS,
+                            f"{self.model_name} parameter set could not be converted: {error}",
+                            "Provide a supported parameter_form with the required parameter names.",
+                        ) from error
+                    converted["_parameter_set"] = parameter_set
+                    return converted
+            raise ThermoEquiError(
+                FailureType.MISSING_PARAMETERS,
+                f"{self.model_name} parameters do not match the requested components.",
+                "Provide a parameter set whose component_order matches the task components.",
+            )
         if self._params_lookup is not None:
             found = self._params_lookup(names)
             if found is not None:
-                # Convert database format (named keys) to gamma format (numpy arrays)
-                import numpy as np
                 n = len(names)
-                converted = {}
-                # tau_coeffs: shape (N, N, 6)
+                converted: dict[str, object] = {}
                 tau = np.zeros((n, n, 6))
-                tau[0, 1] = found.get('tau_12', [0]*6)
-                tau[1, 0] = found.get('tau_21', [0]*6)
-                converted['tau_coeffs'] = tau
-                # alpha_coeffs: shape (N, N, 2)
-                if 'alpha' in found:
+                tau[0, 1] = found.get("tau_12", [0] * 6)
+                tau[1, 0] = found.get("tau_21", [0] * 6)
+                converted["tau_coeffs"] = tau
+                if "alpha" in found:
                     alp = np.zeros((n, n, 2))
-                    alp[0, 1, 0] = found['alpha']
-                    alp[1, 0, 0] = found['alpha']
-                    converted['alpha_coeffs'] = alp
-                # UNIQUAC: rs, qs
-                if 'r' in found: converted['rs'] = found['r']
-                if 'q' in found: converted['qs'] = found['q']
-                # Wilson: Lambda, volumes
-                if 'Lambda_12' in found:
+                    alp[0, 1, 0] = found["alpha"]
+                    alp[1, 0, 0] = found["alpha"]
+                    converted["alpha_coeffs"] = alp
+                if "r" in found:
+                    converted["rs"] = found["r"]
+                if "q" in found:
+                    converted["qs"] = found["q"]
+                if "Lambda_12" in found:
                     lmb = np.zeros((n, n, 6))
-                    lmb[0, 1] = found.get('Lambda_12', [0]*6)
-                    lmb[1, 0] = found.get('Lambda_21', [0]*6)
-                    converted['Lambda_coeffs'] = lmb
-                if 'volumes' in found: converted['volumes'] = found['volumes']
+                    lmb[0, 1] = found.get("Lambda_12", [0] * 6)
+                    lmb[1, 0] = found.get("Lambda_21", [0] * 6)
+                    converted["Lambda_coeffs"] = lmb
+                if "volumes" in found:
+                    converted["volumes"] = found["volumes"]
+                converted["_database_params"] = found
                 return converted
-
-        # Step 2: Try request.parameters (for future parameter pipeline)
-        # Fallback to any parameters attached to the request (future parameter pipeline)
-        params_attr = getattr(req, "parameters", None)
-        if params_attr is not None:
-            return params_attr
-
-        # Step 3: Fail with helpful message listing known systems
-        raise ThermoEquiError(FailureType.MISSING_PARAMETERS,
+        raise ThermoEquiError(
+            FailureType.MISSING_PARAMETERS,
             f"{self.model_name} needs binary interaction parameters for {names}.",
-            "Use one of the built-in systems or import parameters via the management interface.")
+            "Use one of the built-in systems or import parameters via the management interface.",
+        )
 
     def bubble_point(self, req: TaskManifest) -> CalculationResult:
         names = [c.name for c in req.components]
@@ -103,7 +158,7 @@ class ActCoeffBackend:
             points=[point],
             phases=[PhaseResult(phase="liquid", fraction=1.0, composition=xs),
                     PhaseResult(phase="vapor", fraction=0.0, composition=ys)],
-            phase_state="vapor")
+            phase_state="two_phase")
 
     def dew_point(self, req: TaskManifest) -> CalculationResult:
         names = [c.name for c in req.components]
@@ -119,6 +174,15 @@ class ActCoeffBackend:
             xi = [ys[i] * PP / psat_Pa(names[i], T) for i in range(len(names))]
             s = sum(xi)
             xn = [x / s for x in xi] if s > 0 else xi
+            for _ in range(20):
+                g = self._gamma(np.array(xn), T, names, params)
+                xs = [ys[i] * PP / (g[i] * psat_Pa(names[i], T)) for i in range(len(names))]
+                xs_sum = sum(xs)
+                xn_new = [x / xs_sum for x in xs] if xs_sum > 0 else xs
+                if max(abs(a - b) for a, b in zip(xn_new, xn, strict=True)) < 1e-12:
+                    xn = xn_new
+                    break
+                xn = xn_new
             g = self._gamma(np.array(xn), T, names, params)
             return sum(ys[i] * PP / (g[i] * psat_Pa(names[i], T)) for i in range(len(names))) - 1.0
 
@@ -126,10 +190,21 @@ class ActCoeffBackend:
             T, info = brentq(f, lo, hi, xtol=1e-9, full_output=True, maxiter=200)
         except Exception as e:
             raise ThermoEquiError(FailureType.NUMERICAL_NONCONVERGENCE, f"Dew failed: {e}", "")
-        g = self._gamma(np.array(ys), float(T), names, params)
-        xs = [ys[i] * PP / (g[i] * psat_Pa(names[i], float(T))) for i in range(len(names))]
+        xs = [ys[i] * PP / psat_Pa(names[i], float(T)) for i in range(len(names))]
         s = sum(xs)
         xn = [x / s for x in xs]
+        for _ in range(50):
+            g = self._gamma(np.array(xn), float(T), names, params)
+            xs = [ys[i] * PP / (g[i] * psat_Pa(names[i], float(T))) for i in range(len(names))]
+            s = sum(xs)
+            xn_new = [x / s for x in xs]
+            if max(abs(a - b) for a, b in zip(xn_new, xn, strict=True)) < 1e-12:
+                xn = xn_new
+                break
+            xn = xn_new
+        g = self._gamma(np.array(xn), float(T), names, params)
+        xs = [ys[i] * PP / (g[i] * psat_Pa(names[i], float(T))) for i in range(len(names))]
+        s = sum(xs)
         point = EquilibriumPoint(
             temperature_K=float(T), pressure_kPa=P,
             liquid_composition=xn, vapor_composition=ys,
@@ -140,7 +215,7 @@ class ActCoeffBackend:
             points=[point],
             phases=[PhaseResult(phase="liquid", fraction=1.0, composition=xn),
                     PhaseResult(phase="vapor", fraction=0.0, composition=ys)],
-            phase_state="vapor")
+            phase_state="two_phase")
 
 
     def isobaric_vle(self, req: TaskManifest) -> CalculationResult:

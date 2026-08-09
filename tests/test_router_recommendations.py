@@ -11,6 +11,8 @@ def test_load_model_cards_contains_expected_models() -> None:
     assert {card.model_name for card in cards} == {
         "Ideal/Raoult",
         "Peng-Robinson",
+        "Phasepy/Peng-Robinson",
+        "Clapeyron/Peng-Robinson",
         "Wilson",
         "NRTL",
         "UNIQUAC",
@@ -112,3 +114,19 @@ def test_recommend_models_reports_when_no_candidates_are_executable() -> None:
     assert recommendations
     assert all(item.executable is False for item in recommendations)
     assert all(item.exclusions for item in recommendations)
+
+
+def test_non_production_model_gets_numerical_risk_penalty() -> None:
+    task = TaskManifest(
+        equilibrium_type="VLE",
+        calculation_type="bubble_point",
+        components=[
+            ComponentIdentity(component_id="ethanol", name="ethanol", cas_number="64-17-5"),
+            ComponentIdentity(component_id="water", name="water", cas_number="7732-18-5"),
+        ],
+        conditions=ThermodynamicConditions(pressure_kPa=101.325, liquid_composition=[0.5, 0.5]),
+        points=11,
+    )
+    recommendations = recommend_models(task, available_parameter_models={"NRTL"})
+    nrtl = next(item for item in recommendations if item.model_name == "NRTL")
+    assert nrtl.breakdown.numerical_risk_penalty == 12.0

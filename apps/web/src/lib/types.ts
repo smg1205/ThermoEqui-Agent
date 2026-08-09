@@ -35,6 +35,23 @@ export interface Conditions {
   feed_composition?: number[] | null;
 }
 
+export interface ParameterSet {
+  parameter_set_id: string;
+  model_name: string;
+  component_order: string[];
+  parameters: Record<string, number>;
+  parameter_form: string;
+  units: Record<string, string>;
+  temperature_range_K?: [number, number] | null;
+  pressure_range_kPa?: [number, number] | null;
+  equilibrium_types: Array<"VLE" | "LLE" | "FLASH">;
+  source_title?: string | null;
+  source_identifier?: string | null;
+  source_type: "literature" | "database" | "user_supplied" | "test_fixture" | "estimated" | "unknown";
+  quality_level: string;
+  notes?: string | null;
+}
+
 export interface TaskManifest {
   task_id: string;
   equilibrium_type: "VLE" | "LLE" | "FLASH";
@@ -48,6 +65,7 @@ export interface TaskManifest {
   model_name?: string | null;
   points: number;
   original_question?: string | null;
+  parameters: ParameterSet[];
 }
 
 export interface EquilibriumPoint {
@@ -97,6 +115,18 @@ export interface ScoreBreakdown {
   evidence_quality_score: number;
   extrapolation_penalty: number;
   numerical_risk_penalty: number;
+}
+
+export interface ModelCard {
+  model_name: string;
+  family: string;
+  supported_tasks: string[];
+  excluded_systems: string[];
+  requires_binary_parameters: boolean;
+  pressure_regime: string[];
+  validation_requirements: string[];
+  implementation_status: "available" | "contract_only" | "planned";
+  production_ready: boolean;
 }
 
 export interface PhaseResult {
@@ -154,4 +184,24 @@ export interface ChatResponse {
   task?: TaskManifest | null;
   calculation?: CalculationEnvelope | null;
   request_id?: string | null;
+}
+
+export type RunStatus = "passed" | "warning" | "failed";
+
+export interface RunSummary {
+  run_id: string;
+  request_id: string;
+  task_id: string;
+  status: RunStatus;
+  calculation_type: CalculationType;
+  model_name: string;
+  backend_version: string;
+  created_at: string;
+}
+
+export interface RunListResponse {
+  items: RunSummary[];
+  total: number;
+  limit: number;
+  offset: number;
 }

@@ -21,6 +21,8 @@ def test_repository_search_returns_matching_component_order() -> None:
         equilibrium_types=["VLE"],
         quality_level="reviewed",
         source_type="literature",
+        source_title="Test NRTL source",
+        source_identifier="https://example.invalid/nrtl",
     )
     repository.add_parameter_set(parameter_set)
 
@@ -42,6 +44,8 @@ def test_repository_record_export_creates_export_record() -> None:
         equilibrium_types=["VLE"],
         quality_level="reviewed",
         source_type="literature",
+        source_title="Test NRTL source",
+        source_identifier="https://example.invalid/nrtl",
     )
     repository.add_parameter_set(record)
     repository.record_export(record.parameter_set_id, "json")

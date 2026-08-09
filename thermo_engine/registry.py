@@ -102,10 +102,21 @@ class ThermodynamicBackendRegistry:
                 f"Model {registration.canonical_name} does not implement {task.calculation_type}.",
                 "Choose a calculation supported by the selected model.",
             )
-        return registration.factory()
+        backend = registration.factory()
+        backend.parameter_sources(task)
+        return backend
 
 def _has_activity_coeff_params(task: TaskManifest) -> bool:
     """Check if the component set exists in any activity-coefficient parameter database."""
+    if any(
+        parameter_set.model_name.casefold() in {"nrtl", "uniquac", "wilson"}
+        and [
+            name.casefold() for name in parameter_set.component_order
+        ]
+        == [component.name.casefold() for component in task.components]
+        for parameter_set in task.parameters
+    ):
+        return True
     names = [c.name for c in task.components]
     return lookup_nrtl(names) is not None or lookup_uniquac(names) is not None
 
@@ -115,6 +126,20 @@ def _route_activity_coeff_model(task: TaskManifest) -> tuple[str, str]:
     Priority: NRTL (most general) > UNIQUAC > Wilson.
     """
     names = [c.name for c in task.components]
+    requested = {
+        parameter_set.model_name.casefold()
+        for parameter_set in task.parameters
+        if [
+            name.casefold() for name in parameter_set.component_order
+        ]
+        == [component.name.casefold() for component in task.components]
+    }
+    if "nrtl" in requested:
+        return ("NRTL", "NRTL auto-selected from the request parameter set.")
+    if "uniquac" in requested:
+        return ("UNIQUAC", "UNIQUAC auto-selected from the request parameter set.")
+    if "wilson" in requested:
+        return ("Wilson", "Wilson auto-selected from the request parameter set.")
     if lookup_nrtl(names) is not None:
         return ("NRTL", "NRTL auto-selected for low-pressure system with reviewed binary interaction parameters.")
     if lookup_uniquac(names) is not None:

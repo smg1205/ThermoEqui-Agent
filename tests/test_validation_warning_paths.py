@@ -36,7 +36,7 @@ def test_validate_result_returns_warning_when_warnings_exist() -> None:
     report = validate_result(result)
 
     assert report.overall_status == "warning"
-    assert report.parameter_applicability.passed
+    assert report.parameter_applicability.passed is False
     assert report.equilibrium_residual.passed
     assert report.material_balance.passed
     assert report.convergence.passed
