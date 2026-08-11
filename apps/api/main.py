@@ -57,8 +57,27 @@ repository = Repository()
 
 
 def parameter_availability(task: TaskManifest) -> set[str]:
-    parameter_sets = repository.search_parameter_sets(None, [])
+    parameter_sets = repository_parameter_sets()
     return available_parameter_models_for_task(task, parameter_sets)
+
+
+def repository_parameter_sets() -> list[ParameterSet]:
+    return repository.search_parameter_sets(None, [])
+
+
+def _task_with_repository_parameters(
+    task: TaskManifest,
+    parameter_sets: list[ParameterSet],
+) -> TaskManifest:
+    seen = {parameter_set.parameter_set_id for parameter_set in task.parameters}
+    return task.model_copy(
+        update={
+            "parameters": [
+                *task.parameters,
+                *(parameter_set for parameter_set in parameter_sets if parameter_set.parameter_set_id not in seen),
+            ]
+        }
+    )
 
 
 def configured_provider() -> LLMProvider:
@@ -223,7 +242,11 @@ def health() -> dict[str, str]:
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(body: ChatRequest, request: Request) -> ChatResponse:
-    response = await orchestrator.chat(body.message, body.conversation_id)
+    response = await orchestrator.chat(
+        body.message,
+        body.conversation_id,
+        parameter_sets=repository_parameter_sets(),
+    )
     response.request_id = request.state.request_id
     payload = response.model_dump(mode="json")
     repository.save_chat_and_run(
@@ -243,7 +266,11 @@ class ParseResponse(BaseModel):
 
 @app.post("/api/tasks/parse", response_model=ParseResponse)
 async def parse_task(body: ChatRequest) -> ParseResponse:
-    intent, task = await orchestrator.parse(body.message, body.conversation_id)
+    intent, task = await orchestrator.parse(
+        body.message,
+        body.conversation_id,
+        parameter_sets=repository_parameter_sets(),
+    )
     return ParseResponse(intent=intent, task=task)
 
 
@@ -271,7 +298,12 @@ def search_parameters(model_name: str | None = None, components: list[str] = Que
 def execute(task: TaskManifest, request_id: str) -> CalculationEnvelope:
     if task.original_question is None:
         task = task.model_copy(update={"original_question": "Structured API submission"})
-    envelope = execute_task(task, available_parameter_models=parameter_availability(task))
+    parameter_sets = repository_parameter_sets()
+    task = _task_with_repository_parameters(task, parameter_sets)
+    envelope = execute_task(
+        task,
+        available_parameter_models=available_parameter_models_for_task(task, parameter_sets),
+    )
     repository.save_run(envelope, request_id)
     return envelope
 

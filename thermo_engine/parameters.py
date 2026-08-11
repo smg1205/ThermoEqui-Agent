@@ -38,6 +38,52 @@ def has_chemsep_kij(components: list[ComponentIdentity]) -> bool:
     return True
 
 
+def _component_tokens(components: list[ComponentIdentity]) -> list[set[str]]:
+    return [
+        {
+            component.name.casefold(),
+            (component.cas_number or "").casefold(),
+        }
+        for component in components
+    ]
+
+
+def matching_parameter_set(
+    parameter_sets: list[ParameterSet],
+    components: list[ComponentIdentity],
+    model_name: str,
+) -> ParameterSet | None:
+    """Return the first parameter set matching component order and model name."""
+    expected_tokens = _component_tokens(components)
+    for parameter_set in parameter_sets:
+        if parameter_set.model_name.casefold() != model_name.casefold():
+            continue
+        order = [token.casefold() for token in parameter_set.component_order]
+        if len(order) == len(expected_tokens) and all(
+            order[index] in expected_tokens[index] for index in range(len(order))
+        ):
+            return parameter_set
+    return None
+
+
+def is_srk_kij_parameter_set(parameter_set: ParameterSet) -> bool:
+    return (
+        parameter_set.model_name.casefold() == "srk"
+        and len(parameter_set.component_order) == 2
+        and parameter_set.parameter_form.casefold() in {"srk", "srk kij", "srk binary", "srk binary kij"}
+        and "kij" in parameter_set.parameters
+        and "kij" in parameter_set.units
+    )
+
+
+def has_srk_kij(
+    parameter_sets: list[ParameterSet],
+    components: list[ComponentIdentity],
+) -> bool:
+    parameter_set = matching_parameter_set(parameter_sets, components, "SRK")
+    return parameter_set is not None and is_srk_kij_parameter_set(parameter_set)
+
+
 def _required_parameter(parameters: dict[str, float], keys: tuple[str, ...]) -> float:
     normalized = {key.casefold(): value for key, value in parameters.items()}
     for key in keys:
@@ -53,9 +99,7 @@ def parameter_set_to_backend_params(
 ) -> dict[str, object]:
     """Convert a reviewed ParameterSet into the backend gamma coefficient format."""
     if parameter_set.model_name.casefold() != model_name.casefold():
-        raise ValueError(
-            f"Parameter set model {parameter_set.model_name!r} does not match {model_name!r}."
-        )
+        raise ValueError(f"Parameter set model {parameter_set.model_name!r} does not match {model_name!r}.")
     names = [name.casefold() for name in component_names]
     order = [name.casefold() for name in parameter_set.component_order]
     if len(names) != 2 or order != names:
@@ -106,4 +150,6 @@ def parameter_set_to_backend_params(
                 dtype=float,
             ),
         }
+    if form in {"srk", "srk kij", "srk binary", "srk binary kij"}:
+        return {"kij": _required_parameter(parameters, ("kij",))}
     raise ValueError(f"Unsupported parameter_form {parameter_set.parameter_form!r}.")

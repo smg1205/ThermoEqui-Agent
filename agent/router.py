@@ -17,9 +17,9 @@ from schemas.domain import (
 )
 from schemas.model_applicability import ModelAllowanceRequest
 from thermo_engine.actcoeff_params import lookup_nrtl, lookup_uniquac, lookup_wilson
-from thermo_engine.model_applicability import is_model_allowed
 from thermo_engine.errors import ThermoEquiError
-from thermo_engine.parameters import has_chemsep_kij
+from thermo_engine.model_applicability import is_model_allowed
+from thermo_engine.parameters import has_chemsep_kij, is_srk_kij_parameter_set
 from thermo_engine.properties import resolve_component
 
 CARD_DIRECTORY = Path(__file__).resolve().parents[1] / "knowledge" / "model_cards"
@@ -36,8 +36,7 @@ def _parameter_set_matches_task(parameter_set: ParameterSet, task: TaskManifest)
     ]
     order = [token.casefold() for token in parameter_set.component_order]
     return len(order) == len(expected_tokens) and all(
-        order[index] in expected_tokens[index]
-        for index in range(len(order))
+        order[index] in expected_tokens[index] for index in range(len(order))
     )
 
 
@@ -71,6 +70,8 @@ def available_parameter_models_for_task(
             available.add("Clapeyron/Peng-Robinson")
     for parameter_set in [*(parameter_sets or []), *task.parameters]:
         if _parameter_set_matches_task(parameter_set, task):
+            if parameter_set.model_name.casefold() == "srk" and not is_srk_kij_parameter_set(parameter_set):
+                continue
             available.add(parameter_set.model_name)
     return available
 
@@ -136,6 +137,8 @@ def recommend_models(
             exclusions.append("Ideal/Raoult pure-component properties are missing for this system.")
         if task.equilibrium_type == "LLE" and card.model_name == "Wilson":
             exclusions.append("Wilson is hard-excluded for LLE.")
+        if card.model_name == "SRK" and len(task.components) != 2:
+            exclusions.append("SRK is binary-only in the pilot adapter.")
         has_parameters = not card.requires_binary_parameters or card.model_name.casefold() in available
         if not has_parameters:
             reasons.append("Required binary parameters are unavailable; execution is blocked.")
@@ -205,8 +208,4 @@ def rank_executable_models(
     """Rank only models that are executable for this task, highest score first."""
     if available_parameter_models is None:
         available_parameter_models = available_parameter_models_for_task(task)
-    return [
-        item
-        for item in recommend_models(task, available_parameter_models)
-        if item.executable
-    ]
+    return [item for item in recommend_models(task, available_parameter_models) if item.executable]

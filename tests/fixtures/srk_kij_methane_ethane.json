@@ -1,0 +1,16 @@
+{
+  "parameter_set_id": "srk-synthetic-methane-ethane",
+  "model_name": "SRK",
+  "component_order": ["74-82-8", "74-84-0"],
+  "parameters": {"kij": 0.0026},
+  "parameter_form": "SRK kij",
+  "units": {"kij": "dimensionless"},
+  "temperature_range_K": [110.0, 250.0],
+  "pressure_range_kPa": [100.0, 5000.0],
+  "equilibrium_types": ["VLE", "FLASH"],
+  "source_title": null,
+  "source_identifier": null,
+  "source_type": "test_fixture",
+  "quality_level": "synthetic-test-only",
+  "notes": "Synthetic kij for software tests only; not engineering evidence."
+}

@@ -65,6 +65,7 @@ The following pieces are currently in place:
 | `Peng-Robinson` | `thermo` | `available` | `true` | Moderate- to high-pressure VLE and flash for hydrocarbons and reviewed light-gas systems |
 | `Phasepy/Peng-Robinson` | `phasepy` | `available` | `false` | Optional external Peng-Robinson backend for VLE and flash |
 | `Clapeyron/Peng-Robinson` | `clapeyron` | `available` | `false` | Optional external Peng-Robinson backend for VLE and flash |
+| `SRK` | `thermo` | `available` | `false` | Pilot binary SRK VLE/flash requiring an explicit reviewed or user-attested kij ParameterSet; benchmark closure pending |
 | `NRTL` | `internal` | `available` | `false` | Implemented and registered low-/moderate-pressure non-ideal VLE and flash-style backend with limited reviewed binary parameter coverage |
 | `UNIQUAC` | `internal` | `available` | `false` | Implemented and registered low-/moderate-pressure non-ideal VLE and flash-style backend with limited reviewed binary parameter coverage |
 | `Wilson` | `internal` | `available` | `false` | Implemented and registered low-/moderate-pressure VLE and flash-style backend; LLE is explicitly rejected |
@@ -181,7 +182,8 @@ The current boundary of this feature is intentionally narrow:
 - This layer does not change backend execution logic even when a backend already exists in the codebase.
 - This document does not evaluate or summarize external traditional-model code quality.
 - This document does not describe unconfirmed AI model capabilities.
-- This document does not describe unconfirmed `SRK` support in the main project.
+- `SRK` is tracked as a pilot adapter; `production_ready` stays `false` until reviewed kij
+  coverage and benchmark closure are complete.
 
 Also intentionally out of scope for the current implementation:
 

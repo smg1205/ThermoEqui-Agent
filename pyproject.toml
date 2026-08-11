@@ -43,7 +43,7 @@ requires-python = ">=3.11"
 thermoequi = "thermo_engine.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["agent*", "apps*", "database*", "schemas*", "thermo_engine*"]
+include = ["agent*", "apps*", "benchmarks*", "database*", "schemas*", "thermo_engine*"]
 
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers -p no:cacheprovider"

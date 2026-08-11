@@ -6,17 +6,18 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from schemas.domain import FailureType, TaskManifest
+from thermo_engine.actcoeff_params import lookup_nrtl, lookup_uniquac
 from thermo_engine.backend import ThermodynamicBackend
 from thermo_engine.clapeyron_backend import ClapeyronPengRobinsonBackend
 from thermo_engine.errors import ThermoEquiError
 from thermo_engine.ideal import IdealRaoultBackend
+from thermo_engine.nrtl_backend import NrtlBackend
 from thermo_engine.phasepy_backend import PhasepyPengRobinsonBackend
 from thermo_engine.properties import resolve_component
+from thermo_engine.srk_backend import ThermoSrkBackend
 from thermo_engine.thermo_backend import ThermoPengRobinsonBackend
-from thermo_engine.nrtl_backend import NrtlBackend
 from thermo_engine.uniquac_backend import UniquacBackend
 from thermo_engine.wilson_backend import WilsonBackend
-from thermo_engine.actcoeff_params import lookup_nrtl, lookup_uniquac
 
 
 @dataclass(frozen=True)
@@ -106,13 +107,12 @@ class ThermodynamicBackendRegistry:
         backend.parameter_sources(task)
         return backend
 
+
 def _has_activity_coeff_params(task: TaskManifest) -> bool:
     """Check if the component set exists in any activity-coefficient parameter database."""
     if any(
         parameter_set.model_name.casefold() in {"nrtl", "uniquac", "wilson"}
-        and [
-            name.casefold() for name in parameter_set.component_order
-        ]
+        and [name.casefold() for name in parameter_set.component_order]
         == [component.name.casefold() for component in task.components]
         for parameter_set in task.parameters
     ):
@@ -129,9 +129,7 @@ def _route_activity_coeff_model(task: TaskManifest) -> tuple[str, str]:
     requested = {
         parameter_set.model_name.casefold()
         for parameter_set in task.parameters
-        if [
-            name.casefold() for name in parameter_set.component_order
-        ]
+        if [name.casefold() for name in parameter_set.component_order]
         == [component.name.casefold() for component in task.components]
     }
     if "nrtl" in requested:
@@ -182,6 +180,29 @@ DEFAULT_BACKEND_REGISTRY = ThermodynamicBackendRegistry(
                 }
             ),
             factory=ThermoPengRobinsonBackend,
+        ),
+        BackendRegistration(
+            canonical_name="SRK",
+            aliases=frozenset(
+                {
+                    "srk",
+                    "soave-redlich-kwong",
+                    "soave redlich kwong",
+                    "srk eos",
+                }
+            ),
+            supported_calculations=frozenset(
+                {
+                    "bubble_point",
+                    "dew_point",
+                    "isobaric_vle",
+                    "isothermal_vle",
+                    "tp_flash",
+                    "phase_stability",
+                    "azeotrope",
+                }
+            ),
+            factory=ThermoSrkBackend,
         ),
         BackendRegistration(
             canonical_name="Phasepy/Peng-Robinson",

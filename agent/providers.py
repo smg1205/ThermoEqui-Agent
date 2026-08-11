@@ -94,22 +94,62 @@ def _system_proxy_url() -> str | None:
     return proxies.get("https") or proxies.get("http")
 
 
-_THERMO_QA_KEYWORDS: frozenset[str] = frozenset({
-    "相平衡", "气液", "液液", "vle", "lle", "flash", "泡点", "露点", "共沸",
-    "热力学", "活度", "逸度", "相图", "antoine",
-    "nrtl", "wilson", "uniquac", "peng", "raoult", "ideal",
-    "benzene", "toluene", "ethanol", "acetone", "methanol",
-    "苯", "甲苯", "乙醇", "丙酮", "甲醇",
-    "phase equilibrium", "bubble point", "dew point", "azeotrope",
-    "thermodynamic", "activity coefficient", "fugacity",
-    "equation of state", "binary interaction",
-})
+_THERMO_QA_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "相平衡",
+        "气液",
+        "液液",
+        "vle",
+        "lle",
+        "flash",
+        "泡点",
+        "露点",
+        "共沸",
+        "热力学",
+        "活度",
+        "逸度",
+        "相图",
+        "antoine",
+        "nrtl",
+        "wilson",
+        "uniquac",
+        "peng",
+        "raoult",
+        "ideal",
+        "benzene",
+        "toluene",
+        "ethanol",
+        "acetone",
+        "methanol",
+        "苯",
+        "甲苯",
+        "乙醇",
+        "丙酮",
+        "甲醇",
+        "phase equilibrium",
+        "bubble point",
+        "dew point",
+        "azeotrope",
+        "thermodynamic",
+        "activity coefficient",
+        "fugacity",
+        "equation of state",
+        "binary interaction",
+    }
+)
 
-_CALCULATION_KEYWORDS: frozenset[str] = frozenset({
-    "calc", "compute", "simulate",
-    "求算", "算出", "推算",
-    "T-x-y", "P-x-y",
-})
+_CALCULATION_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "calc",
+        "compute",
+        "simulate",
+        "求算",
+        "算出",
+        "推算",
+        "T-x-y",
+        "P-x-y",
+    }
+)
 _CALCULATION_REQUEST_PATTERN = re.compile(
     r"(?:请|帮我|请帮我|试|试着)?\s*(?:计算(?:一下|一下下)?|算一算|求解|试算|求(?:解|算)?|推算)"
 )
@@ -170,6 +210,53 @@ def _normalize_intent_value(raw_value: str) -> str:
     return match.group(1).upper()
 
 
+_TASK_MANIFEST_LIST_DEFAULTS: dict[str, list[str]] = {
+    "requested_outputs": ["table", "validation"],
+    "validation_requirements": ["composition_balance", "equilibrium_residual", "convergence"],
+    "assumptions": [],
+    "parameters": [],
+}
+
+
+def _normalize_task_manifest_payload(value: str) -> str:
+    """Repair common LLM JSON habits without changing the public schema."""
+    raw = value.strip()
+    fenced = _FENCED_VALUE.fullmatch(raw)
+    if fenced is not None:
+        raw = fenced.group(1).strip()
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return value
+    if not isinstance(payload, dict):
+        return value
+    for key, default in _TASK_MANIFEST_LIST_DEFAULTS.items():
+        if not isinstance(payload.get(key), list):
+            payload[key] = default
+    parameters = payload.get("parameters")
+    if parameters not in (None, []):
+        payload["assumptions"] = [
+            *payload["assumptions"],
+            (
+                "External provider-supplied parameters were discarded; "
+                "reviewed parameter sets must be created through the parameter API."
+            ),
+        ]
+    payload["parameters"] = []
+    if payload.get("composition_basis") is None:
+        payload["composition_basis"] = "mole_fraction"
+    if payload.get("points") is None:
+        payload["points"] = 21
+    if "task_id" in payload and payload["task_id"] is None:
+        del payload["task_id"]
+    components = payload.get("components")
+    if isinstance(components, list):
+        for component in components:
+            if isinstance(component, dict) and component.get("aliases") is None:
+                component["aliases"] = []
+    return json.dumps(payload, ensure_ascii=False)
+
+
 class ConstrainedLLMProvider:
     """Shared orchestration behavior; subclasses implement only their HTTP transport."""
 
@@ -205,6 +292,10 @@ class ConstrainedLLMProvider:
             "Return only a TaskManifest JSON object or null. Follow the supplied JSON Schema exactly. "
             "model_name may be null so the deterministic router can select an applicable model. "
             "Never invent components, conditions, parameters, data, or citations. "
+            "Never populate the parameters field; leave it as [] because parameter sets are managed "
+            "separately through the parameter repository. "
+            "Do not emit null for optional fields; omit them or use the schema defaults. "
+            "Return plain JSON, not Markdown fenced code. "
             "Never calculate equilibrium numbers; deterministic tools do that after validation. "
             f"TaskManifest JSON Schema: {schema}. Previous manifest: {context}"
         )
@@ -222,10 +313,11 @@ class ConstrainedLLMProvider:
                 json_mode=True,
                 max_tokens=2048,
             )
-            if value.strip() == "null":
+            normalized_value = _normalize_task_manifest_payload(value)
+            if normalized_value.strip() == "null":
                 return None
             try:
-                return TaskManifest.model_validate_json(value)
+                return TaskManifest.model_validate_json(normalized_value)
             except ValidationError as error:
                 validation_fields = sorted(
                     {

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from schemas.domain import ComponentIdentity, TaskManifest, ThermodynamicConditions
 from agent.router import load_model_cards, recommend_models
+from schemas.domain import ComponentIdentity, TaskManifest, ThermodynamicConditions
 
 
 def test_load_model_cards_contains_expected_models() -> None:
@@ -13,6 +13,7 @@ def test_load_model_cards_contains_expected_models() -> None:
         "Peng-Robinson",
         "Phasepy/Peng-Robinson",
         "Clapeyron/Peng-Robinson",
+        "SRK",
         "Wilson",
         "NRTL",
         "UNIQUAC",
