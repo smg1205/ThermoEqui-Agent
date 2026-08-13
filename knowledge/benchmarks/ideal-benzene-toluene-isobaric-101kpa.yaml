@@ -1,0 +1,66 @@
+case_id: ideal-benzene-toluene-isobaric-101kpa
+title: Benzene + Toluene isobaric VLE at 101.325 kPa
+task:
+  equilibrium_type: VLE
+  calculation_type: bubble_point
+  components:
+    - component_id: benzene
+      name: Benzene
+      cas_number: 71-43-2
+    - component_id: toluene
+      name: Toluene
+      cas_number: 108-88-3
+  conditions:
+    pressure_kPa: 101.325
+  model_name: Ideal/Raoult
+reference:
+  points:
+    - temperature_K: 383.76
+      liquid_composition: [0.0, 1.0]
+      vapor_composition: [0.0, 1.0]
+    - temperature_K: 381.51
+      liquid_composition: [0.05, 0.95]
+      vapor_composition: [0.108, 0.892]
+    - temperature_K: 379.37
+      liquid_composition: [0.1, 0.9]
+      vapor_composition: [0.206, 0.794]
+    - temperature_K: 375.39
+      liquid_composition: [0.2, 0.8]
+      vapor_composition: [0.372, 0.628]
+    - temperature_K: 371.76
+      liquid_composition: [0.3, 0.7]
+      vapor_composition: [0.508, 0.492]
+    - temperature_K: 368.45
+      liquid_composition: [0.4, 0.6]
+      vapor_composition: [0.621, 0.379]
+    - temperature_K: 365.4
+      liquid_composition: [0.5, 0.5]
+      vapor_composition: [0.714, 0.286]
+    - temperature_K: 362.59
+      liquid_composition: [0.6, 0.4]
+      vapor_composition: [0.792, 0.208]
+    - temperature_K: 359.99
+      liquid_composition: [0.7, 0.3]
+      vapor_composition: [0.857, 0.143]
+    - temperature_K: 357.58
+      liquid_composition: [0.8, 0.2]
+      vapor_composition: [0.913, 0.087]
+    - temperature_K: 355.34
+      liquid_composition: [0.9, 0.1]
+      vapor_composition: [0.96, 0.04]
+    - temperature_K: 354.27
+      liquid_composition: [0.95, 0.05]
+      vapor_composition: [0.981, 0.019]
+    - temperature_K: 353.25
+      liquid_composition: [1.0, 0.0]
+      vapor_composition: [1.0, 0.0]
+tolerances:
+  temperature_K: 0.5
+  composition: 0.01
+source:
+  title: "Benzene + Toluene isobaric VLE, 101.325 kPa (Rollet et al. 1956)"
+  identifier: https://github.com/RafaelSch/vle-ai-benchmarking/blob/main/DannerGuessIsoB.csv
+  kind: experimental
+  notes: "Original citation: ROLLET A.P., ELKAIM G., TOLEDANO P., SENEX M., COMP.REND. 242, 2560 (1956). Data row transcribed from DannerGuessIsoB.csv."
+applicable_models:
+  - Ideal/Raoult

@@ -273,6 +273,53 @@ class Repository:
                     f"Parameter set {parameter_set.parameter_set_id} already exists"
                 ) from None
 
+    def upsert_parameter_set(self, parameter_set: ParameterSet) -> str:
+        """Insert or refresh one production parameter set; returns added/updated/unchanged."""
+        if parameter_set.source_type == "test_fixture":
+            raise ValueError("test_fixture parameter sets cannot enter the production database")
+        payload = parameter_set.model_dump(mode="json")
+        with Session(self.engine) as session:
+            row = session.get(ParameterSetRow, parameter_set.parameter_set_id)
+            if row is None:
+                session.add(
+                    ParameterSetRow(
+                        id=parameter_set.parameter_set_id,
+                        model_name=parameter_set.model_name,
+                        component_key="|".join(parameter_set.component_order),
+                        payload=payload,
+                        source_type=parameter_set.source_type,
+                    )
+                )
+                session.commit()
+                return "added"
+            if row.payload == payload:
+                return "unchanged"
+            row.model_name = parameter_set.model_name
+            row.component_key = "|".join(parameter_set.component_order)
+            row.payload = payload
+            row.source_type = parameter_set.source_type
+            session.commit()
+            return "updated"
+
+    def delete_duplicate_parameter_sets(self, production_sets: list[ParameterSet]) -> int:
+        """Remove non-production rows that duplicate a production model/component pair."""
+        removed = 0
+        with Session(self.engine) as session:
+            for parameter_set in production_sets:
+                component_key = "|".join(parameter_set.component_order)
+                rows = session.scalars(
+                    select(ParameterSetRow).where(
+                        ParameterSetRow.model_name == parameter_set.model_name,
+                        ParameterSetRow.component_key == component_key,
+                        ParameterSetRow.id != parameter_set.parameter_set_id,
+                    )
+                ).all()
+                for row in rows:
+                    session.delete(row)
+                    removed += 1
+            session.commit()
+        return removed
+
     def search_parameter_sets(self, model_name: str | None, components: list[str]) -> list[ParameterSet]:
         with Session(self.engine) as session:
             query = select(ParameterSetRow)

@@ -1,0 +1,90 @@
+case_id: wilson-ethanol-benzene-isobaric-53kpa
+title: Ethanol + Benzene isobaric VLE at 53.33 kPa
+task:
+  equilibrium_type: VLE
+  calculation_type: bubble_point
+  components:
+    - component_id: ethanol
+      name: ethanol
+      cas_number: 64-17-5
+    - component_id: benzene
+      name: benzene
+      cas_number: 71-43-2
+  conditions:
+    pressure_kPa: 53.33
+  model_name: Wilson
+  parameters:
+    - parameter_set_id: chemsep-wilson-ethanol-benzene
+      model_name: Wilson
+      component_order: [ethanol, benzene]
+      parameters:
+        lambda12_a: 0.42219583398993754
+        lambda12_b: -704.4710647699068
+        lambda21_a: -0.4221958339899375
+        lambda21_b: -104.33919870009464
+        v1: 58.5
+        v2: 89.4
+      parameter_form: Wilson exp(a+b/T) binary
+      units:
+        lambda12_a: dimensionless
+        lambda12_b: K
+        lambda21_a: dimensionless
+        lambda21_b: K
+        v1: cm3/mol
+        v2: cm3/mol
+      temperature_range_K: [298.0, 353.0]
+      pressure_range_kPa: [50.0, 120.0]
+      equilibrium_types: [VLE, FLASH]
+      source_type: database
+      source_title: "ChemSep Wilson binary parameters, ethanol/benzene (thermo package)"
+      source_identifier: https://github.com/CalebBell/thermo/tree/main/thermo/Interaction%20Parameters/ChemSep/wilson.json
+      quality_level: reviewed-chemsep-database
+      notes: "ChemSep Wilson original-T form Lambda = exp(a + b/T) already includes the log volume ratio; v1/v2 are informational."
+reference:
+  points:
+    - temperature_K: 335.65
+      liquid_composition: [1.0, 0.0]
+      vapor_composition: [1.0, 0.0]
+    - temperature_K: 329.45
+      liquid_composition: [0.9, 0.1]
+      vapor_composition: [0.68, 0.32]
+    - temperature_K: 327.25
+      liquid_composition: [0.8, 0.2]
+      vapor_composition: [0.554, 0.446]
+    - temperature_K: 325.35
+      liquid_composition: [0.7, 0.3]
+      vapor_composition: [0.491, 0.509]
+    - temperature_K: 324.75
+      liquid_composition: [0.6, 0.4]
+      vapor_composition: [0.453, 0.547]
+    - temperature_K: 324.45
+      liquid_composition: [0.5, 0.5]
+      vapor_composition: [0.424, 0.576]
+    - temperature_K: 324.35
+      liquid_composition: [0.4, 0.6]
+      vapor_composition: [0.399, 0.601]
+    - temperature_K: 324.35
+      liquid_composition: [0.399, 0.601]
+      vapor_composition: [0.399, 0.601]
+    - temperature_K: 324.45
+      liquid_composition: [0.3, 0.7]
+      vapor_composition: [0.377, 0.623]
+    - temperature_K: 324.75
+      liquid_composition: [0.2, 0.8]
+      vapor_composition: [0.353, 0.647]
+    - temperature_K: 325.95
+      liquid_composition: [0.1, 0.9]
+      vapor_composition: [0.301, 0.699]
+    - temperature_K: 333.45
+      liquid_composition: [0.0, 1.0]
+      vapor_composition: [0.0, 1.0]
+tolerances:
+  temperature_K: 0.5
+  composition: 0.02
+source:
+  title: "Ethanol + Benzene isobaric VLE, 53.33 kPa (Nielsen & Weber 1959)"
+  identifier: https://github.com/RafaelSch/vle-ai-benchmarking/blob/main/DannerGuessIsoB.csv
+  kind: experimental
+  notes: "Original citation: NIELSEN R.L., WEBER J.H., J.CHEM.ENG.DATA 4, 145 (1959). Data row transcribed from DannerGuessIsoB.csv; benzene mole fractions converted to the ethanol-first component order."
+applicable_models:
+  - Wilson

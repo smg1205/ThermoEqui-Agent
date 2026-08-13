@@ -1,7 +1,9 @@
 """Base class for activity-coefficient VLE backends (NRTL/UNIQUAC/Wilson).
 
-Auto-looks up binary parameters from actcoeff_params.py for known systems.
+Binary parameters always come from reviewed ``ParameterSet`` records carried
+on the task or attached from the production parameter repository.
 """
+
 from __future__ import annotations
 
 import json
@@ -10,12 +12,15 @@ import numpy as np
 from scipy.optimize import brentq
 
 from schemas.domain import (
-    CalculationResult, EquilibriumPoint, FailureType, PhaseResult, TaskManifest,
+    CalculationResult,
+    EquilibriumPoint,
+    FailureType,
+    PhaseResult,
+    TaskManifest,
 )
 from thermo_engine.activity_coeff_utils import build_result, psat_Pa, temperature_bounds
 from thermo_engine.errors import ThermoEquiError
-from thermo_engine.parameters import parameter_set_to_backend_params
-
+from thermo_engine.parameters import matching_parameter_set, parameter_set_to_backend_params
 
 
 class ActCoeffBackend:
@@ -23,117 +28,62 @@ class ActCoeffBackend:
 
     model_name = ""
     version = ""
-    _params_lookup = None  # Set by subclass: lookup_nrtl, lookup_uniquac, or lookup_wilson
 
     def parameter_sources(self, request: TaskManifest) -> list[dict[str, str]]:
         params = self._params(request)
         parameter_set = params.get("_parameter_set")
-        if parameter_set is not None:
-            return [
-                {
-                    "component": " / ".join(parameter_set.component_order),
-                    "property": f"{self.model_name} interaction parameters",
-                    "parameter_form": parameter_set.parameter_form,
-                    "parameter_values": json.dumps(parameter_set.parameters),
-                    "parameter_set_id": parameter_set.parameter_set_id,
-                    "source_title": parameter_set.source_title or "user-supplied",
-                    "source_identifier": parameter_set.source_identifier or "user-supplied",
-                    "quality_level": parameter_set.quality_level,
-                    "temperature_range_K": str(parameter_set.temperature_range_K),
-                    "pressure_range_kPa": str(parameter_set.pressure_range_kPa),
-                }
-            ]
-        database = params.get("_database_params")
-        if database is not None:
-            return [
-                {
-                    "component": " / ".join(component.name for component in request.components),
-                    "property": f"{self.model_name} interaction parameters",
-                    "source_title": database.get("source", "built-in parameter database"),
-                    "source_identifier": database.get("source", "thermo_engine/actcoeff_params.py"),
-                    "temperature_range_K": str(database.get("T_range_K")),
-                    "pressure_range_kPa": str(database.get("P_range_kPa")),
-                    "parameter_values": json.dumps(
-                        {
-                            key: value
-                            for key, value in database.items()
-                            if key not in {"source", "T_range_K", "P_range_kPa"}
-                        },
-                        default=str,
-                    ),
-                }
-            ]
-        return []
+        assert parameter_set is not None
+        return [
+            {
+                "component": " / ".join(parameter_set.component_order),
+                "property": f"{self.model_name} interaction parameters",
+                "parameter_form": parameter_set.parameter_form,
+                "parameter_values": json.dumps(parameter_set.parameters),
+                "parameter_set_id": parameter_set.parameter_set_id,
+                "source_title": parameter_set.source_title or "user-supplied",
+                "source_identifier": parameter_set.source_identifier or "user-supplied",
+                "quality_level": parameter_set.quality_level,
+                "temperature_range_K": str(parameter_set.temperature_range_K),
+                "pressure_range_kPa": str(parameter_set.pressure_range_kPa),
+            }
+        ]
 
     def _gamma(self, xs: np.ndarray, T: float, names: list[str], params: dict | None) -> np.ndarray:
         raise NotImplementedError
 
     def _params(self, req: TaskManifest) -> dict | None:
-        """Get model-specific parameters. Auto-lookup from built-in database, fallback to req.parameters."""
+        """Resolve the matching reviewed parameter set from the request manifest."""
         names = [c.name for c in req.components]
-        model_sets = [
-            parameter_set
-            for parameter_set in req.parameters
-            if parameter_set.model_name.casefold() == self.model_name.casefold()
-        ]
-        if model_sets:
-            for parameter_set in model_sets:
-                order = [name.casefold() for name in parameter_set.component_order]
-                if order == [name.casefold() for name in names]:
-                    try:
-                        converted = parameter_set_to_backend_params(parameter_set, self.model_name, names)
-                    except ValueError as error:
-                        raise ThermoEquiError(
-                            FailureType.MISSING_PARAMETERS,
-                            f"{self.model_name} parameter set could not be converted: {error}",
-                            "Provide a supported parameter_form with the required parameter names.",
-                        ) from error
-                    converted["_parameter_set"] = parameter_set
-                    return converted
-            raise ThermoEquiError(
-                FailureType.MISSING_PARAMETERS,
-                f"{self.model_name} parameters do not match the requested components.",
-                "Provide a parameter set whose component_order matches the task components.",
-            )
-        if self._params_lookup is not None:
-            found = self._params_lookup(names)
-            if found is not None:
-                n = len(names)
-                converted: dict[str, object] = {}
-                tau = np.zeros((n, n, 6))
-                tau[0, 1] = found.get("tau_12", [0] * 6)
-                tau[1, 0] = found.get("tau_21", [0] * 6)
-                converted["tau_coeffs"] = tau
-                if "alpha" in found:
-                    alp = np.zeros((n, n, 2))
-                    alp[0, 1, 0] = found["alpha"]
-                    alp[1, 0, 0] = found["alpha"]
-                    converted["alpha_coeffs"] = alp
-                if "r" in found:
-                    converted["rs"] = found["r"]
-                if "q" in found:
-                    converted["qs"] = found["q"]
-                if "Lambda_12" in found:
-                    lmb = np.zeros((n, n, 6))
-                    lmb[0, 1] = found.get("Lambda_12", [0] * 6)
-                    lmb[1, 0] = found.get("Lambda_21", [0] * 6)
-                    converted["Lambda_coeffs"] = lmb
-                if "volumes" in found:
-                    converted["volumes"] = found["volumes"]
-                converted["_database_params"] = found
-                return converted
+        parameter_set = matching_parameter_set(req.parameters, req.components, self.model_name)
+        if parameter_set is not None:
+            try:
+                converted = parameter_set_to_backend_params(
+                    parameter_set,
+                    self.model_name,
+                    parameter_set.component_order,
+                )
+            except ValueError as error:
+                raise ThermoEquiError(
+                    FailureType.MISSING_PARAMETERS,
+                    f"{self.model_name} parameter set could not be converted: {error}",
+                    "Provide a supported parameter_form with the required parameter names.",
+                ) from error
+            converted["_parameter_set"] = parameter_set
+            return converted
         raise ThermoEquiError(
             FailureType.MISSING_PARAMETERS,
             f"{self.model_name} needs binary interaction parameters for {names}.",
-            "Use one of the built-in systems or import parameters via the management interface.",
+            "Provide a reviewed or user-attested parameter set on the request.",
         )
 
     def bubble_point(self, req: TaskManifest) -> CalculationResult:
         names = [c.name for c in req.components]
         P = req.conditions.pressure_kPa
         xs = req.conditions.liquid_composition
-        if P is None: raise ThermoEquiError(FailureType.MISSING_DATA, "Pressure required.", "")
-        if xs is None: raise ThermoEquiError(FailureType.MISSING_DATA, "liquid_composition required.", "")
+        if P is None:
+            raise ThermoEquiError(FailureType.MISSING_DATA, "Pressure required.", "")
+        if xs is None:
+            raise ThermoEquiError(FailureType.MISSING_DATA, "liquid_composition required.", "")
         lo, hi = temperature_bounds(names, P)
         PP = P * 1000.0
         params = self._params(req)
@@ -145,27 +95,44 @@ class ActCoeffBackend:
         try:
             T, info = brentq(f, lo, hi, xtol=1e-9, full_output=True, maxiter=200)
         except Exception as e:
-            raise ThermoEquiError(FailureType.NUMERICAL_NONCONVERGENCE, f"Bubble failed: {e}", "")
+            raise ThermoEquiError(
+                FailureType.NUMERICAL_NONCONVERGENCE,
+                f"Bubble failed: {e}",
+                "",
+            ) from None
         g = self._gamma(np.array(xs), float(T), names, params)
         ys = [xs[i] * g[i] * psat_Pa(names[i], float(T)) / PP for i in range(len(names))]
         point = EquilibriumPoint(
-            temperature_K=float(T), pressure_kPa=P,
-            liquid_composition=xs, vapor_composition=ys,
-            equilibrium_residual=abs(sum(ys)-1.0),
+            temperature_K=float(T),
+            pressure_kPa=P,
+            liquid_composition=xs,
+            vapor_composition=ys,
+            equilibrium_residual=abs(sum(ys) - 1.0),
         )
-        return build_result(req, self.model_name, self.version, T=float(T), P=P,
-            residual=abs(sum(ys)-1.0), iters=int(info.iterations),
+        return build_result(
+            req,
+            self.model_name,
+            self.version,
+            T=float(T),
+            P=P,
+            residual=abs(sum(ys) - 1.0),
+            iters=int(info.iterations),
             points=[point],
-            phases=[PhaseResult(phase="liquid", fraction=1.0, composition=xs),
-                    PhaseResult(phase="vapor", fraction=0.0, composition=ys)],
-            phase_state="two_phase")
+            phases=[
+                PhaseResult(phase="liquid", fraction=1.0, composition=xs),
+                PhaseResult(phase="vapor", fraction=0.0, composition=ys),
+            ],
+            phase_state="two_phase",
+        )
 
     def dew_point(self, req: TaskManifest) -> CalculationResult:
         names = [c.name for c in req.components]
         P = req.conditions.pressure_kPa
         ys = req.conditions.vapor_composition
-        if P is None: raise ThermoEquiError(FailureType.MISSING_DATA, "Pressure required.", "")
-        if ys is None: raise ThermoEquiError(FailureType.MISSING_DATA, "vapor_composition required.", "")
+        if P is None:
+            raise ThermoEquiError(FailureType.MISSING_DATA, "Pressure required.", "")
+        if ys is None:
+            raise ThermoEquiError(FailureType.MISSING_DATA, "vapor_composition required.", "")
         lo, hi = temperature_bounds(names, P)
         PP = P * 1000.0
         params = self._params(req)
@@ -189,7 +156,11 @@ class ActCoeffBackend:
         try:
             T, info = brentq(f, lo, hi, xtol=1e-9, full_output=True, maxiter=200)
         except Exception as e:
-            raise ThermoEquiError(FailureType.NUMERICAL_NONCONVERGENCE, f"Dew failed: {e}", "")
+            raise ThermoEquiError(
+                FailureType.NUMERICAL_NONCONVERGENCE,
+                f"Dew failed: {e}",
+                "",
+            ) from None
         xs = [ys[i] * PP / psat_Pa(names[i], float(T)) for i in range(len(names))]
         s = sum(xs)
         xn = [x / s for x in xs]
@@ -206,17 +177,27 @@ class ActCoeffBackend:
         xs = [ys[i] * PP / (g[i] * psat_Pa(names[i], float(T))) for i in range(len(names))]
         s = sum(xs)
         point = EquilibriumPoint(
-            temperature_K=float(T), pressure_kPa=P,
-            liquid_composition=xn, vapor_composition=ys,
-            equilibrium_residual=abs(s-1.0),
+            temperature_K=float(T),
+            pressure_kPa=P,
+            liquid_composition=xn,
+            vapor_composition=ys,
+            equilibrium_residual=abs(s - 1.0),
         )
-        return build_result(req, self.model_name, self.version, T=float(T), P=P,
-            residual=abs(s-1.0), iters=int(info.iterations),
+        return build_result(
+            req,
+            self.model_name,
+            self.version,
+            T=float(T),
+            P=P,
+            residual=abs(s - 1.0),
+            iters=int(info.iterations),
             points=[point],
-            phases=[PhaseResult(phase="liquid", fraction=1.0, composition=xn),
-                    PhaseResult(phase="vapor", fraction=0.0, composition=ys)],
-            phase_state="two_phase")
-
+            phases=[
+                PhaseResult(phase="liquid", fraction=1.0, composition=xn),
+                PhaseResult(phase="vapor", fraction=0.0, composition=ys),
+            ],
+            phase_state="two_phase",
+        )
 
     def isobaric_vle(self, req: TaskManifest) -> CalculationResult:
         """Isobaric T-x-y VLE curve: iterate x1, compute bubble point for each fraction.
@@ -228,7 +209,6 @@ class ActCoeffBackend:
                 "The VLE curve endpoint supports binary mixtures only.",
                 "Provide exactly two components or use a point/flash calculation.",
             )
-        names = [c.name for c in req.components]
         P = req.conditions.pressure_kPa
         if P is None:
             raise ThermoEquiError(FailureType.MISSING_DATA, "Pressure required.", "")
@@ -238,11 +218,15 @@ class ActCoeffBackend:
         # Slight offset from pure edges to avoid NaN in combinatorial terms
         _eps = 1e-12
         for fraction in np.linspace(_eps, 1.0 - _eps, req.points):
-            sub_req = req.model_copy(update={
-                "conditions": req.conditions.model_copy(update={
-                    "liquid_composition": [float(fraction), float(1.0 - fraction)],
-                }),
-            })
+            sub_req = req.model_copy(
+                update={
+                    "conditions": req.conditions.model_copy(
+                        update={
+                            "liquid_composition": [float(fraction), float(1.0 - fraction)],
+                        }
+                    ),
+                }
+            )
             point_result = self.bubble_point(sub_req)
             all_points.extend(point_result.points)
             for w in point_result.warnings or []:
@@ -250,9 +234,18 @@ class ActCoeffBackend:
                     warnings.append(w)
             iterations += point_result.iterations
         residual = max(p.equilibrium_residual for p in all_points)
-        return build_result(req, self.model_name, self.version, points=all_points,
-            T=all_points[0].temperature_K if all_points else None, P=P,
-            residual=residual, iters=iterations, warnings=warnings, phase_state="curve")
+        return build_result(
+            req,
+            self.model_name,
+            self.version,
+            points=all_points,
+            T=all_points[0].temperature_K if all_points else None,
+            P=P,
+            residual=residual,
+            iters=iterations,
+            warnings=warnings,
+            phase_state="curve",
+        )
 
     def isothermal_vle(self, req: TaskManifest) -> CalculationResult:
         """Isothermal P-x-y VLE curve: iterate x1, compute bubble pressure at each fraction.
@@ -283,18 +276,33 @@ class ActCoeffBackend:
                 continue
             residual = abs(s - 1.0) if s > 1e-30 else 1.0
             yn = [y1 / s, y2 / s] if s > 1e-30 else [y1, y2]
-            all_points.append(EquilibriumPoint(
-                temperature_K=T, pressure_kPa=P_Pa / 1000.0,
-                liquid_composition=[float(xs[0]), float(xs[1])],
-                vapor_composition=yn, equilibrium_residual=residual,
-            ))
+            all_points.append(
+                EquilibriumPoint(
+                    temperature_K=T,
+                    pressure_kPa=P_Pa / 1000.0,
+                    liquid_composition=[float(xs[0]), float(xs[1])],
+                    vapor_composition=yn,
+                    equilibrium_residual=residual,
+                )
+            )
         if not all_points:
-            raise ThermoEquiError(FailureType.NUMERICAL_NONCONVERGENCE,
+            raise ThermoEquiError(
+                FailureType.NUMERICAL_NONCONVERGENCE,
                 "All isothermal VLE points produced non-finite results.",
-                "Check temperature and component parameters.")
+                "Check temperature and component parameters.",
+            )
         residual = max(p.equilibrium_residual for p in all_points)
-        return build_result(req, self.model_name, self.version, points=all_points,
-            T=T, P=None, residual=residual, iters=0, phase_state="curve")
+        return build_result(
+            req,
+            self.model_name,
+            self.version,
+            points=all_points,
+            T=T,
+            P=None,
+            residual=residual,
+            iters=0,
+            phase_state="curve",
+        )
 
     def tp_flash(self, req: TaskManifest) -> CalculationResult:
         """TP flash with composition-dependent K via successive substitution.
@@ -317,10 +325,7 @@ class ActCoeffBackend:
         K = np.array([psat_Pa(names[i], T) / P_Pa for i in range(n)])
 
         def _rr(beta):
-            return float(sum(
-                zs[i] * (K[i] - 1.0) / (1.0 + beta * (K[i] - 1.0))
-                for i in range(n)
-            ))
+            return float(sum(zs[i] * (K[i] - 1.0) / (1.0 + beta * (K[i] - 1.0)) for i in range(n)))
 
         f0 = _rr(0.0)
         f1 = _rr(1.0)
@@ -346,21 +351,23 @@ class ActCoeffBackend:
             warnings: list[str] = []
             for iteration in range(100):
                 try:
-                    def rr_f(b):
-                        return float(sum(
-                            zs[i] * (K[i] - 1.0) / (1.0 + b * (K[i] - 1.0))
-                            for i in range(n)
-                        ))
-                    beta, info = brentq(lambda b: float(sum(
-                        zs[i] * (K[i] - 1.0) / (1.0 + b * (K[i] - 1.0)) for i in range(n)
-                    )), 0.0, 1.0, xtol=1e-9, full_output=True, maxiter=100)
+                    beta, info = brentq(
+                        lambda b, current_K=K: float(
+                            sum(zs[i] * (current_K[i] - 1.0) / (1.0 + b * (current_K[i] - 1.0)) for i in range(n))
+                        ),
+                        0.0,
+                        1.0,
+                        xtol=1e-9,
+                        full_output=True,
+                        maxiter=100,
+                    )
                 except (ValueError, RuntimeError) as e:
                     if iteration == 0:
                         raise ThermoEquiError(
                             FailureType.NUMERICAL_NONCONVERGENCE,
                             f"TP Flash Rachford-Rice failed: {e}",
                             "Check feed composition and conditions.",
-                        )
+                        ) from None
                     warnings.append(f"RR solve clamped at iteration {iteration}")
                     beta = 0.5
 
@@ -399,9 +406,18 @@ class ActCoeffBackend:
             PhaseResult(phase="liquid", fraction=1.0 - beta, composition=[float(x) for x in xL]),
             PhaseResult(phase="vapor", fraction=beta, composition=[float(x) for x in xV]),
         ]
-        return build_result(req, self.model_name, self.version,
-            T=T, P=P, vf=float(beta), phases=phases,
-            residual=residual, iters=iterations, phase_state=state)
+        return build_result(
+            req,
+            self.model_name,
+            self.version,
+            T=T,
+            P=P,
+            vf=float(beta),
+            phases=phases,
+            residual=residual,
+            iters=iterations,
+            phase_state=state,
+        )
 
     def phase_stability(self, req: TaskManifest) -> CalculationResult:
         result = self.tp_flash(req)
@@ -409,9 +425,11 @@ class ActCoeffBackend:
             "Phase stability evaluation via activity-coefficient-based flash only; "
             "tangent-plane distance is not available for this backend."
         )
-        return result.model_copy(update={
-            "warnings": [message] + (result.warnings or []),
-        })
+        return result.model_copy(
+            update={
+                "warnings": [message] + (result.warnings or []),
+            }
+        )
 
     def azeotrope(self, req: TaskManifest) -> CalculationResult:
         curve = self.isobaric_vle(req)
@@ -419,19 +437,26 @@ class ActCoeffBackend:
             point
             for point in curve.points[1:-1]
             if max(
-                abs(l - v)
-                for l, v in zip(point.liquid_composition, point.vapor_composition, strict=True)
-            ) <= 1e-3
+                abs(liquid - vapor)
+                for liquid, vapor in zip(
+                    point.liquid_composition,
+                    point.vapor_composition,
+                    strict=True,
+                )
+            )
+            <= 1e-3
         ]
         warning = (
             "No azeotrope candidate met |x-y| <= 1e-3."
             if not candidates
             else "Candidate points require local refinement before engineering use."
         )
-        return curve.model_copy(update={
-            "points": candidates,
-            "warnings": [*curve.warnings, warning],
-        })
+        return curve.model_copy(
+            update={
+                "points": candidates,
+                "warnings": [*curve.warnings, warning],
+            }
+        )
 
     def lle(self, req: TaskManifest) -> CalculationResult:
         raise ThermoEquiError(

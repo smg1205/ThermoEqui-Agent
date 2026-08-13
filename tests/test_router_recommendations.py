@@ -128,6 +128,6 @@ def test_non_production_model_gets_numerical_risk_penalty() -> None:
         conditions=ThermodynamicConditions(pressure_kPa=101.325, liquid_composition=[0.5, 0.5]),
         points=11,
     )
-    recommendations = recommend_models(task, available_parameter_models={"NRTL"})
-    nrtl = next(item for item in recommendations if item.model_name == "NRTL")
-    assert nrtl.breakdown.numerical_risk_penalty == 12.0
+    recommendations = recommend_models(task, available_parameter_models={"SRK"})
+    srk = next(item for item in recommendations if item.model_name == "SRK")
+    assert srk.breakdown.numerical_risk_penalty == 12.0

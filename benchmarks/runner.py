@@ -28,14 +28,20 @@ def _models_for_case(case: BenchmarkCase) -> list[str]:
     return list(dict.fromkeys(models))
 
 
+def _bounded_composition(values: list[float] | None) -> list[float] | None:
+    if values is None:
+        return None
+    return [min(1.0, max(0.0, value)) for value in values]
+
+
 def _extract_result_point(result: CalculationResult, index: int) -> BenchmarkReferencePoint:
     if result.points:
         point = result.points[index]
         return BenchmarkReferencePoint(
             temperature_K=point.temperature_K,
             pressure_kPa=point.pressure_kPa,
-            liquid_composition=point.liquid_composition,
-            vapor_composition=point.vapor_composition,
+            liquid_composition=_bounded_composition(point.liquid_composition),
+            vapor_composition=_bounded_composition(point.vapor_composition),
         )
     if result.calculation_type in {"tp_flash", "phase_stability"}:
         liquid = next((phase for phase in result.phases if phase.phase == "liquid"), None)
@@ -44,8 +50,8 @@ def _extract_result_point(result: CalculationResult, index: int) -> BenchmarkRef
             temperature_K=result.temperature_K,
             pressure_kPa=result.pressure_kPa,
             vapor_fraction=result.vapor_fraction,
-            liquid_composition=liquid.composition if liquid is not None else None,
-            vapor_composition=vapor.composition if vapor is not None else None,
+            liquid_composition=_bounded_composition(liquid.composition if liquid is not None else None),
+            vapor_composition=_bounded_composition(vapor.composition if vapor is not None else None),
         )
     raise ValueError(f"Cannot extract a benchmark point for {result.calculation_type!r}.")
 
@@ -104,18 +110,16 @@ def _composition_metrics(
     return metrics
 
 
-def _compare_result(
-    result: CalculationResult,
+def _is_dataset_case(case: BenchmarkCase) -> bool:
+    """A multi-point isobaric/isothermal VLE dataset runs one point calculation per reference row."""
+    return case.task.calculation_type in {"bubble_point", "dew_point"} and len(case.reference.points) > 1
+
+
+def _compare_observed_points(
+    observed_points: list[BenchmarkReferencePoint],
     reference: BenchmarkReference,
     tolerances: BenchmarkTolerances,
 ) -> list[BenchmarkMetric]:
-    if result.points:
-        observed_points = [_extract_result_point(result, index) for index in range(len(result.points))]
-    elif result.calculation_type in {"tp_flash", "phase_stability"}:
-        observed_points = [_extract_result_point(result, 0)]
-    else:
-        observed_points = []
-
     if len(observed_points) != len(reference.points):
         return [
             BenchmarkMetric(
@@ -155,6 +159,22 @@ def _compare_result(
                 tolerances.composition,
             )
         )
+    return metrics
+
+
+def _compare_result(
+    result: CalculationResult,
+    reference: BenchmarkReference,
+    tolerances: BenchmarkTolerances,
+) -> list[BenchmarkMetric]:
+    if result.points:
+        observed_points = [_extract_result_point(result, index) for index in range(len(result.points))]
+    elif result.calculation_type in {"tp_flash", "phase_stability"}:
+        observed_points = [_extract_result_point(result, 0)]
+    else:
+        observed_points = []
+
+    metrics = _compare_observed_points(observed_points, reference, tolerances)
 
     if isfinite(result.residual):
         metrics.append(
@@ -170,6 +190,48 @@ def _compare_result(
     return metrics
 
 
+def _worst_status(statuses: list[str]) -> str:
+    if "failed" in statuses:
+        return "failed"
+    if "warning" in statuses:
+        return "warning"
+    return "passed"
+
+
+def _run_dataset_case(case: BenchmarkCase, model_name: str) -> tuple[list[BenchmarkReferencePoint], str, list[str]]:
+    """Run one point calculation per experimental reference row."""
+    observed_points: list[BenchmarkReferencePoint] = []
+    statuses: list[str] = []
+    messages: list[str] = []
+    for index, reference_point in enumerate(case.reference.points):
+        if case.task.calculation_type == "bubble_point":
+            liquid_composition = reference_point.liquid_composition
+            if liquid_composition is None:
+                raise ValueError(f"Benchmark {case.case_id!r} bubble point {index} requires liquid_composition.")
+            conditions = case.task.conditions.model_copy(update={"liquid_composition": liquid_composition})
+        else:
+            vapor_composition = reference_point.vapor_composition
+            if vapor_composition is None:
+                raise ValueError(f"Benchmark {case.case_id!r} dew point {index} requires vapor_composition.")
+            conditions = case.task.conditions.model_copy(update={"vapor_composition": vapor_composition})
+        task = case.task.model_copy(
+            update={
+                "model_name": model_name,
+                "conditions": conditions,
+                "original_question": f"Benchmark {case.case_id} point {index}",
+            }
+        )
+        result = calculate_equilibrium(task)
+        validation = validate_equilibrium_result(result)
+        statuses.append(validation.overall_status)
+        observed_points.append(_extract_result_point(result, 0))
+        if validation.overall_status == "failed":
+            messages.append(
+                f"point[{index}] validation failed: {validation.recommended_action or validation.overall_status}"
+            )
+    return observed_points, _worst_status(statuses), messages
+
+
 def run_benchmark_case(case: BenchmarkCase, model_name: str) -> BenchmarkCaseResult:
     task = case.task.model_copy(
         update={
@@ -178,8 +240,15 @@ def run_benchmark_case(case: BenchmarkCase, model_name: str) -> BenchmarkCaseRes
         }
     )
     try:
-        result = calculate_equilibrium(task)
-        validation = validate_equilibrium_result(result)
+        if _is_dataset_case(case):
+            observed_points, validation_status, dataset_messages = _run_dataset_case(case, model_name)
+            metrics = _compare_observed_points(observed_points, case.reference, case.tolerances)
+        else:
+            result = calculate_equilibrium(task)
+            validation = validate_equilibrium_result(result)
+            validation_status = validation.overall_status
+            metrics = _compare_result(result, case.reference, case.tolerances)
+            dataset_messages = []
     except ThermoEquiError as error:
         return BenchmarkCaseResult(
             case_id=case.case_id,
@@ -190,21 +259,22 @@ def run_benchmark_case(case: BenchmarkCase, model_name: str) -> BenchmarkCaseRes
             message=error.detail.message,
         )
 
-    metrics = _compare_result(result, case.reference, case.tolerances)
     failed_metrics = [metric.field for metric in metrics if not metric.passed]
-    passed = validation.overall_status != "failed" and not failed_metrics
+    passed = validation_status != "failed" and not failed_metrics
     if passed:
         message = "All compared benchmark metrics and validation passed."
     elif failed_metrics:
         message = f"Failed metrics: {', '.join(failed_metrics)}."
+    elif dataset_messages:
+        message = "; ".join(dataset_messages)
     else:
-        message = f"Validation status: {validation.overall_status}."
+        message = f"Validation status: {validation_status}."
     return BenchmarkCaseResult(
         case_id=case.case_id,
         model_name=model_name,
         passed=passed,
         metrics=metrics,
-        validation_status=validation.overall_status,
+        validation_status=validation_status,
         message=message,
     )
 

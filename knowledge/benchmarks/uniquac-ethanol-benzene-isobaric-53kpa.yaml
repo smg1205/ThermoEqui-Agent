@@ -1,0 +1,88 @@
+case_id: uniquac-ethanol-benzene-isobaric-53kpa
+title: Ethanol + Benzene isobaric VLE at 53.33 kPa (interior points)
+task:
+  equilibrium_type: VLE
+  calculation_type: bubble_point
+  components:
+    - component_id: ethanol
+      name: ethanol
+      cas_number: 64-17-5
+    - component_id: benzene
+      name: benzene
+      cas_number: 71-43-2
+  conditions:
+    pressure_kPa: 53.33
+  model_name: UNIQUAC
+  parameters:
+    - parameter_set_id: chemsep-uniquac-ethanol-benzene
+      model_name: UNIQUAC
+      component_order: [ethanol, benzene]
+      parameters:
+        tau12_a: 0.0
+        tau12_b: 53.003660565844854
+        tau21_a: 0.0
+        tau21_b: -385.69583205514346
+        r1: 2.1055
+        r2: 3.1878
+        q1: 1.9720
+        q2: 2.4000
+      parameter_form: UNIQUAC exp(a+b/T) binary
+      units:
+        tau12_a: dimensionless
+        tau12_b: K
+        tau21_a: dimensionless
+        tau21_b: K
+        r1: dimensionless
+        r2: dimensionless
+        q1: dimensionless
+        q2: dimensionless
+      temperature_range_K: [298.0, 353.0]
+      pressure_range_kPa: [50.0, 120.0]
+      equilibrium_types: [VLE, FLASH]
+      source_type: database
+      source_title: "ChemSep UNIQUAC binary parameters, ethanol/benzene (thermo package)"
+      source_identifier: https://github.com/CalebBell/thermo/tree/main/thermo/Interaction%20Parameters/ChemSep/uniquac.json
+      quality_level: reviewed-chemsep-database
+      notes: "ChemSep UNIQUAC original-T form tau = exp(b/T) converted to exp(a+b/T) with a=0; r/q are standard UNIQUAC structural parameters."
+reference:
+  points:
+    - temperature_K: 329.45
+      liquid_composition: [0.9, 0.1]
+      vapor_composition: [0.68, 0.32]
+    - temperature_K: 327.25
+      liquid_composition: [0.8, 0.2]
+      vapor_composition: [0.554, 0.446]
+    - temperature_K: 325.35
+      liquid_composition: [0.7, 0.3]
+      vapor_composition: [0.491, 0.509]
+    - temperature_K: 324.75
+      liquid_composition: [0.6, 0.4]
+      vapor_composition: [0.453, 0.547]
+    - temperature_K: 324.45
+      liquid_composition: [0.5, 0.5]
+      vapor_composition: [0.424, 0.576]
+    - temperature_K: 324.35
+      liquid_composition: [0.4, 0.6]
+      vapor_composition: [0.399, 0.601]
+    - temperature_K: 324.35
+      liquid_composition: [0.399, 0.601]
+      vapor_composition: [0.399, 0.601]
+    - temperature_K: 324.45
+      liquid_composition: [0.3, 0.7]
+      vapor_composition: [0.377, 0.623]
+    - temperature_K: 324.75
+      liquid_composition: [0.2, 0.8]
+      vapor_composition: [0.353, 0.647]
+    - temperature_K: 325.95
+      liquid_composition: [0.1, 0.9]
+      vapor_composition: [0.301, 0.699]
+tolerances:
+  temperature_K: 1.0
+  composition: 0.02
+source:
+  title: "Ethanol + Benzene isobaric VLE, 53.33 kPa (Nielsen & Weber 1959)"
+  identifier: https://github.com/RafaelSch/vle-ai-benchmarking/blob/main/DannerGuessIsoB.csv
+  kind: experimental
+  notes: "Original citation: NIELSEN R.L., WEBER J.H., J.CHEM.ENG.DATA 4, 145 (1959). Pure endpoints are excluded because the UNIQUAC combinatorial terms are undefined at x=0/1 in the current backend."
+applicable_models:
+  - UNIQUAC

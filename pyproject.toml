@@ -41,6 +41,7 @@ requires-python = ">=3.11"
 
 [project.scripts]
 thermoequi = "thermo_engine.cli:main"
+thermoequi-seed = "thermo_engine.seed:main"
 
 [tool.setuptools.packages.find]
 include = ["agent*", "apps*", "benchmarks*", "database*", "schemas*", "thermo_engine*"]

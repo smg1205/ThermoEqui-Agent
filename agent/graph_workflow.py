@@ -8,7 +8,7 @@ from typing import Annotated, Any, TypedDict, cast
 from langgraph.graph import END, START, StateGraph
 
 from agent.executor import TaskExecution, validate_task_execution
-from agent.providers import LLMProvider
+from agent.providers import LLMProvider, LLMProviderError, LLMProviderOutputError
 from agent.tools import EngineeringToolRegistry
 from schemas.domain import AgentStep, CalculationEnvelope, EvidenceStatement, TaskManifest
 
@@ -91,12 +91,20 @@ class BoundedAgentGraph:
 
     async def _respond(self, state: CalculationWorkflowState) -> CalculationWorkflowState:
         envelope = state["envelope"]
-        statements = await self.provider.interpret_result(
-            {
-                "result": envelope.result.model_dump(mode="json"),
-                "validation": envelope.validation.model_dump(mode="json"),
-            }
-        )
+        try:
+            statements = await self.provider.interpret_result(
+                {
+                    "result": envelope.result.model_dump(mode="json"),
+                    "validation": envelope.validation.model_dump(mode="json"),
+                }
+            )
+        except (LLMProviderError, LLMProviderOutputError):
+            statements = [
+                EvidenceStatement(
+                    category="Warning",
+                    text="外部模型解读暂时不可用；结果来自确定性引擎并已通过独立验证。",
+                )
+            ]
         return {
             "statements": statements,
             "steps": [

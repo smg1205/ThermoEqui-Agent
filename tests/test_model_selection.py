@@ -6,8 +6,9 @@ import pytest
 
 from agent.executor import execute_task
 from agent.router import rank_executable_models
-from schemas.domain import ComponentIdentity, FailureType, TaskManifest, ThermodynamicConditions
+from schemas.domain import ComponentIdentity, FailureType, ParameterSet, TaskManifest, ThermodynamicConditions
 from thermo_engine.errors import ThermoEquiError
+from thermo_engine.parameter_store import load_production_parameter_sets
 
 BENZENE = ComponentIdentity(component_id="benzene", name="Benzene", cas_number="71-43-2")
 TOLUENE = ComponentIdentity(component_id="toluene", name="Toluene", cas_number="108-88-3")
@@ -16,6 +17,14 @@ WATER = ComponentIdentity(component_id="water", name="water", cas_number="7732-1
 METHANE = ComponentIdentity(component_id="methane", name="Methane", cas_number="74-82-8")
 ETHANE = ComponentIdentity(component_id="ethane", name="Ethane", cas_number="74-84-0")
 NITROGEN = ComponentIdentity(component_id="nitrogen", name="Nitrogen", cas_number="7727-37-9")
+
+
+def nrtl_ethanol_water_parameter_set() -> ParameterSet:
+    return next(
+        item
+        for item in load_production_parameter_sets()
+        if item.model_name == "NRTL" and item.component_order == ["ethanol", "water"]
+    )
 
 
 def test_auto_selection_prefers_ideal_for_local_registry_system() -> None:
@@ -57,6 +66,7 @@ def test_auto_selection_uses_activity_coefficient_when_ideal_and_eos_unavailable
         calculation_type="bubble_point",
         components=[ETHANOL, WATER],
         conditions=ThermodynamicConditions(pressure_kPa=101.325, liquid_composition=[0.5, 0.5]),
+        parameters=[nrtl_ethanol_water_parameter_set()],
     )
 
     envelope = execute_task(task)
@@ -71,6 +81,7 @@ def test_rank_executable_models_returns_only_executable_candidates() -> None:
         calculation_type="bubble_point",
         components=[ETHANOL, WATER],
         conditions=ThermodynamicConditions(pressure_kPa=101.325, liquid_composition=[0.5, 0.5]),
+        parameters=[nrtl_ethanol_water_parameter_set()],
     )
 
     candidates = rank_executable_models(task)
@@ -93,3 +104,5 @@ def test_auto_selection_raises_structured_error_when_nothing_is_executable() -> 
 
     assert captured.value.detail.failure_type == FailureType.PARAMETER_OUT_OF_DOMAIN
     assert "No executable model" in captured.value.detail.message
+    assert "missing reviewed parameters" in captured.value.detail.message
+    assert "thermoequi-seed" in captured.value.detail.recovery_action

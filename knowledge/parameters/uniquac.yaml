@@ -1,0 +1,120 @@
+- parameter_set_id: chemsep-uniquac-ethanol-water
+  model_name: UNIQUAC
+  component_order: [ethanol, water]
+  parameters:
+    tau12_a: 0.0
+    tau12_b: -87.46005814161899
+    tau21_a: 0.0
+    tau21_b: -55.288075960115854
+    r1: 2.1055
+    r2: 0.9200
+    q1: 1.9720
+    q2: 1.4000
+  parameter_form: UNIQUAC exp(a+b/T) binary
+  units:
+    tau12_a: dimensionless
+    tau12_b: K
+    tau21_a: dimensionless
+    tau21_b: K
+    r1: dimensionless
+    r2: dimensionless
+    q1: dimensionless
+    q2: dimensionless
+  temperature_range_K: [343.0, 373.0]
+  pressure_range_kPa: [50.0, 120.0]
+  equilibrium_types: [VLE, FLASH]
+  source_type: database
+  source_title: "ChemSep UNIQUAC binary parameters, ethanol/water (thermo package)"
+  source_identifier: "https://github.com/CalebBell/thermo/tree/main/thermo/Interaction%20Parameters/ChemSep/uniquac.json"
+  quality_level: reviewed-chemsep-database
+  notes: "ChemSep UNIQUAC original-T form tau = exp(b/T) converted to the repository exp(a+b/T) form with a=0; r/q structural parameters retained from the migrated DECHEMA record."
+- parameter_set_id: chemsep-uniquac-ethanol-benzene
+  model_name: UNIQUAC
+  component_order: [ethanol, benzene]
+  parameters:
+    tau12_a: 0.0
+    tau12_b: 53.003660565844854
+    tau21_a: 0.0
+    tau21_b: -385.69583205514346
+    r1: 2.1055
+    r2: 3.1878
+    q1: 1.9720
+    q2: 2.4000
+  parameter_form: UNIQUAC exp(a+b/T) binary
+  units:
+    tau12_a: dimensionless
+    tau12_b: K
+    tau21_a: dimensionless
+    tau21_b: K
+    r1: dimensionless
+    r2: dimensionless
+    q1: dimensionless
+    q2: dimensionless
+  temperature_range_K: [298.0, 353.0]
+  pressure_range_kPa: [50.0, 120.0]
+  equilibrium_types: [VLE, FLASH]
+  source_type: database
+  source_title: "ChemSep UNIQUAC binary parameters, ethanol/benzene (thermo package)"
+  source_identifier: "https://github.com/CalebBell/thermo/tree/main/thermo/Interaction%20Parameters/ChemSep/uniquac.json"
+  quality_level: reviewed-chemsep-database
+  notes: "ChemSep UNIQUAC original-T form tau = exp(b/T) converted to the repository exp(a+b/T) form with a=0; r/q are standard UNIQUAC structural parameters (ethanol 2.1055/1.9720, benzene 3.1878/2.4000). Experimental benchmark source: Nielsen & Weber, J. Chem. Eng. Data 4, 145 (1959), 53.33 kPa."
+- parameter_set_id: dechema-uniquac-methanol-water
+  model_name: UNIQUAC
+  component_order: [methanol, water]
+  parameters:
+    tau12_a: 0.82
+    tau12_b: -260.0
+    tau21_a: 0.45
+    tau21_b: 150.0
+    r1: 1.4311
+    r2: 0.9200
+    q1: 1.4320
+    q2: 1.4000
+  parameter_form: UNIQUAC exp(a+b/T) binary
+  units:
+    tau12_a: dimensionless
+    tau12_b: K
+    tau21_a: dimensionless
+    tau21_b: K
+    r1: dimensionless
+    r2: dimensionless
+    q1: dimensionless
+    q2: dimensionless
+  temperature_range_K: [337.0, 373.0]
+  pressure_range_kPa: [50.0, 120.0]
+  equilibrium_types: [VLE, FLASH]
+  source_type: literature
+  source_title: "DECHEMA VLE Data Collection, Vol.1, Part 1"
+  source_identifier: "legacy-registry:dechema-vle-vol1-part1-methanol-water-uniquac"
+  quality_level: legacy-reviewed-import
+  notes: "Migrated verbatim from thermo_engine/actcoeff_params.py; bibliographic details carried over unchanged and require final verification before production use."
+- parameter_set_id: dechema-uniquac-acetone-water
+  model_name: UNIQUAC
+  component_order: [acetone, water]
+  parameters:
+    tau12_a: 0.47
+    tau12_b: -87.5
+    tau21_a: 1.35
+    tau21_b: -309.1
+    r1: 2.5735
+    r2: 0.9200
+    q1: 2.3360
+    q2: 1.4000
+  parameter_form: UNIQUAC exp(a+b/T) binary
+  units:
+    tau12_a: dimensionless
+    tau12_b: K
+    tau21_a: dimensionless
+    tau21_b: K
+    r1: dimensionless
+    r2: dimensionless
+    q1: dimensionless
+    q2: dimensionless
+  temperature_range_K: [329.0, 373.0]
+  pressure_range_kPa: [50.0, 120.0]
+  equilibrium_types: [VLE, FLASH]
+  source_type: literature
+  source_title: "DECHEMA VLE Data Collection"
+  source_identifier: "legacy-registry:dechema-vle-acetone-water-uniquac"
+  quality_level: legacy-reviewed-import
+  notes: "Migrated verbatim from thermo_engine/actcoeff_params.py; bibliographic details carried over unchanged and require final verification before production use."

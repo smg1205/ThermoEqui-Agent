@@ -16,7 +16,6 @@ from schemas.domain import (
     TaskManifest,
 )
 from schemas.model_applicability import ModelAllowanceRequest
-from thermo_engine.actcoeff_params import lookup_nrtl, lookup_uniquac, lookup_wilson
 from thermo_engine.errors import ThermoEquiError
 from thermo_engine.model_applicability import is_model_allowed
 from thermo_engine.parameters import has_chemsep_kij, is_srk_kij_parameter_set
@@ -54,14 +53,7 @@ def available_parameter_models_for_task(
     parameter_sets: list[ParameterSet] | None = None,
 ) -> set[str]:
     """Return model names whose reviewed parameters exist for this task."""
-    names = [component.name for component in task.components]
     available: set[str] = set()
-    if lookup_nrtl(names) is not None:
-        available.add("NRTL")
-    if lookup_uniquac(names) is not None:
-        available.add("UNIQUAC")
-    if lookup_wilson(names) is not None:
-        available.add("Wilson")
     if has_chemsep_kij(task.components):
         available.add("Peng-Robinson")
         if importlib.util.find_spec("phasepy") is not None:

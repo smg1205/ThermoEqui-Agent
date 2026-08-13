@@ -37,8 +37,8 @@ def calculate_task(
         if not candidates:
             raise ThermoEquiError(
                 FailureType.PARAMETER_OUT_OF_DOMAIN,
-                "No executable model is available for this task.",
-                "Import reviewed parameters or select a supported model.",
+                "No executable model is available for this task; the requested models are missing reviewed parameters.",
+                "Seed reviewed parameters with `thermoequi-seed` or import a parameter set via the parameter API.",
             )
         selected = candidates[0]
         task = task.model_copy(
@@ -90,8 +90,8 @@ def execute_task(
     if not candidates:
         raise ThermoEquiError(
             FailureType.PARAMETER_OUT_OF_DOMAIN,
-            "No executable model is available for this task.",
-            "Import reviewed parameters or select a supported model.",
+            "No executable model is available for this task; the requested models are missing reviewed parameters.",
+            "Seed reviewed parameters with `thermoequi-seed` or import a parameter set via the parameter API.",
         )
 
     attempts: list[str] = []

@@ -6,7 +6,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from schemas.domain import FailureType, TaskManifest
-from thermo_engine.actcoeff_params import lookup_nrtl, lookup_uniquac
 from thermo_engine.backend import ThermodynamicBackend
 from thermo_engine.clapeyron_backend import ClapeyronPengRobinsonBackend
 from thermo_engine.errors import ThermoEquiError
@@ -110,40 +109,37 @@ class ThermodynamicBackendRegistry:
 
 def _has_activity_coeff_params(task: TaskManifest) -> bool:
     """Check if the component set exists in any activity-coefficient parameter database."""
-    if any(
+    return any(
         parameter_set.model_name.casefold() in {"nrtl", "uniquac", "wilson"}
         and [name.casefold() for name in parameter_set.component_order]
         == [component.name.casefold() for component in task.components]
         for parameter_set in task.parameters
-    ):
-        return True
-    names = [c.name for c in task.components]
-    return lookup_nrtl(names) is not None or lookup_uniquac(names) is not None
+    )
 
 
 def _route_activity_coeff_model(task: TaskManifest) -> tuple[str, str]:
     """Select the best available activity-coefficient model for this system.
     Priority: NRTL (most general) > UNIQUAC > Wilson.
     """
-    names = [c.name for c in task.components]
     requested = {
         parameter_set.model_name.casefold()
         for parameter_set in task.parameters
         if [name.casefold() for name in parameter_set.component_order]
         == [component.name.casefold() for component in task.components]
     }
-    if "nrtl" in requested:
-        return ("NRTL", "NRTL auto-selected from the request parameter set.")
-    if "uniquac" in requested:
-        return ("UNIQUAC", "UNIQUAC auto-selected from the request parameter set.")
-    if "wilson" in requested:
-        return ("Wilson", "Wilson auto-selected from the request parameter set.")
-    if lookup_nrtl(names) is not None:
-        return ("NRTL", "NRTL auto-selected for low-pressure system with reviewed binary interaction parameters.")
-    if lookup_uniquac(names) is not None:
-        return ("UNIQUAC", "UNIQUAC auto-selected for low-pressure system with reviewed binary interaction parameters.")
-    # Wilson is the last resort; if none match, the caller should not reach here
-    return ("Wilson", "Wilson auto-selected for low-pressure system with reviewed binary interaction parameters.")
+    preferences = (
+        ("nrtl", "NRTL", "NRTL auto-selected from the request parameter set."),
+        ("uniquac", "UNIQUAC", "UNIQUAC auto-selected from the request parameter set."),
+        ("wilson", "Wilson", "Wilson auto-selected from the request parameter set."),
+    )
+    for key, model_name, reason in preferences:
+        if key in requested:
+            return (model_name, reason)
+    raise ThermoEquiError(
+        FailureType.MISSING_PARAMETERS,
+        "No matching activity-coefficient parameter set is present on the task.",
+        "Provide a reviewed or user-attested parameter set whose component_order matches the task.",
+    )
 
 
 DEFAULT_BACKEND_REGISTRY = ThermodynamicBackendRegistry(
@@ -160,7 +156,6 @@ DEFAULT_BACKEND_REGISTRY = ThermodynamicBackendRegistry(
                     "tp_flash",
                     "phase_stability",
                     "azeotrope",
-                    "lle",
                 }
             ),
             factory=IdealRaoultBackend,
@@ -260,7 +255,6 @@ DEFAULT_BACKEND_REGISTRY = ThermodynamicBackendRegistry(
                     "tp_flash",
                     "phase_stability",
                     "azeotrope",
-                    "lle",
                 }
             ),
             factory=NrtlBackend,
@@ -277,7 +271,6 @@ DEFAULT_BACKEND_REGISTRY = ThermodynamicBackendRegistry(
                     "tp_flash",
                     "phase_stability",
                     "azeotrope",
-                    "lle",
                 }
             ),
             factory=UniquacBackend,

@@ -1,0 +1,78 @@
+- parameter_set_id: chemsep-wilson-ethanol-water
+  model_name: Wilson
+  component_order: [ethanol, water]
+  parameters:
+    lambda12_a: -1.1769274893976625
+    lambda12_b: -192.38082765657816
+    lambda21_a: 1.1769274893976625
+    lambda21_b: -480.8011032813958
+    v1: 58.5
+    v2: 18.0
+  parameter_form: Wilson exp(a+b/T) binary
+  units:
+    lambda12_a: dimensionless
+    lambda12_b: K
+    lambda21_a: dimensionless
+    lambda21_b: K
+    v1: cm3/mol
+    v2: cm3/mol
+  temperature_range_K: [343.0, 373.0]
+  pressure_range_kPa: [50.0, 120.0]
+  equilibrium_types: [VLE, FLASH]
+  source_type: database
+  source_title: "ChemSep Wilson binary parameters, ethanol/water (thermo package)"
+  source_identifier: "https://github.com/CalebBell/thermo/tree/main/thermo/Interaction%20Parameters/ChemSep/wilson.json"
+  quality_level: reviewed-chemsep-database
+  notes: "ChemSep Wilson original-T form Lambda = exp(a + b/T) already includes the log volume ratio; v1/v2 are informational."
+- parameter_set_id: chemsep-wilson-ethanol-benzene
+  model_name: Wilson
+  component_order: [ethanol, benzene]
+  parameters:
+    lambda12_a: 0.42219583398993754
+    lambda12_b: -704.4710647699068
+    lambda21_a: -0.4221958339899375
+    lambda21_b: -104.33919870009464
+    v1: 58.5
+    v2: 89.4
+  parameter_form: Wilson exp(a+b/T) binary
+  units:
+    lambda12_a: dimensionless
+    lambda12_b: K
+    lambda21_a: dimensionless
+    lambda21_b: K
+    v1: cm3/mol
+    v2: cm3/mol
+  temperature_range_K: [298.0, 353.0]
+  pressure_range_kPa: [50.0, 120.0]
+  equilibrium_types: [VLE, FLASH]
+  source_type: database
+  source_title: "ChemSep Wilson binary parameters, ethanol/benzene (thermo package)"
+  source_identifier: "https://github.com/CalebBell/thermo/tree/main/thermo/Interaction%20Parameters/ChemSep/wilson.json"
+  quality_level: reviewed-chemsep-database
+  notes: "ChemSep Wilson original-T form Lambda = exp(a + b/T) already includes the log volume ratio; v1/v2 are informational. Experimental benchmark source: Nielsen & Weber, J. Chem. Eng. Data 4, 145 (1959), 53.33 kPa."
+- parameter_set_id: dechema-wilson-methanol-water
+  model_name: Wilson
+  component_order: [methanol, water]
+  parameters:
+    lambda12_a: -1.70
+    lambda12_b: 510.0
+    lambda21_a: 1.20
+    lambda21_b: -280.0
+    v1: 40.7
+    v2: 18.0
+  parameter_form: Wilson exp(a+b/T) binary
+  units:
+    lambda12_a: dimensionless
+    lambda12_b: K
+    lambda21_a: dimensionless
+    lambda21_b: K
+    v1: cm3/mol
+    v2: cm3/mol
+  temperature_range_K: [337.0, 373.0]
+  pressure_range_kPa: [50.0, 120.0]
+  equilibrium_types: [VLE, FLASH]
+  source_type: literature
+  source_title: "DECHEMA Vol.1 Part 1"
+  source_identifier: "legacy-registry:dechema-vle-vol1-part1-methanol-water-wilson"
+  quality_level: legacy-reviewed-import
+  notes: "Migrated verbatim from thermo_engine/actcoeff_params.py; bibliographic details carried over unchanged and require final verification before production use."

@@ -223,10 +223,10 @@ def test_keep_result_has_positive_reason_when_no_rules_exclude() -> None:
     assert reasons == ["Kept: the model satisfies the current minimal applicability rules."]
 
 
-def test_contract_only_model_accumulates_all_applicable_exclusion_reasons() -> None:
+def test_non_production_parameter_required_model_accumulates_all_applicable_exclusion_reasons() -> None:
     results = _result_by_name(ModelApplicabilityRequest(task=_task()))
 
-    decision, reasons = results["NRTL"]
+    decision, reasons = results["SRK"]
     assert decision == "exclude"
     assert any("not production_ready" in reason for reason in reasons)
     assert any("requires binary parameters" in reason for reason in reasons)

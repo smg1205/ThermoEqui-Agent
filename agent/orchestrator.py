@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from uuid import uuid4
 
 from agent.graph_workflow import BoundedAgentGraph
-from agent.providers import LLMProvider, LLMProviderOutputError
+from agent.providers import LLMProvider, LLMProviderError, LLMProviderOutputError
 from agent.skill_integration import answer_with_skills
 from agent.tools import DEFAULT_TOOL_REGISTRY, EngineeringToolRegistry
 from schemas.domain import (
@@ -337,6 +337,9 @@ _NON_REQUEST_CALCULATION_PREFIXES = (
 )
 
 
+_CALCULATION_SEARCH_VERBS = ("搜索", "查找")
+
+
 def _is_active_calculation_request(message: str) -> bool:
     """Detect active calculation requests vs passive descriptions of calculations.
 
@@ -348,6 +351,8 @@ def _is_active_calculation_request(message: str) -> bool:
         if prefix.casefold() in lower:
             return False
     if any(verb.casefold() in lower for verb in _CALCULATION_REQUEST_VERBS):
+        return True
+    if any(verb.casefold() in lower for verb in _CALCULATION_SEARCH_VERBS):
         return True
     return False
 
@@ -644,7 +649,17 @@ class ConversationOrchestrator:
             Intent.RESULT_INTERPRETATION,
         }:
             strict = intent in {Intent.PARAMETER_QUERY, Intent.DATA_QUERY}  # 新增
-            statements = await self.provider.answer_with_evidence(message, strict=strict)
+            try:
+                statements = await self.provider.answer_with_evidence(message, strict=strict)
+            except (LLMProviderError, LLMProviderOutputError):
+                statements = answer_with_skills(message, intent)
+                if not statements:
+                    statements = [
+                        EvidenceStatement(
+                            category="Warning",
+                            text="外部模型暂时不可用；请稍后重试或改用确定性计算接口。",
+                        )
+                    ]
             if not statements or statements[0].category == "Warning":
                 skill_statements = answer_with_skills(message, intent)
                 if skill_statements:
@@ -655,7 +670,20 @@ class ConversationOrchestrator:
                 answer="\n".join(item.text for item in statements),
                 statements=statements,
             )
-        task = await self.provider.formulate_task(message, state.task)
+        try:
+            task = await self.provider.formulate_task(message, state.task)
+        except (LLMProviderError, LLMProviderOutputError) as error:
+            return ChatResponse(
+                conversation_id=conversation_id,
+                intent=intent,
+                answer=str(error),
+                statements=[
+                    EvidenceStatement(
+                        category="Warning",
+                        text="外部模型暂时不可用；请稍后重试或改用确定性计算接口。",
+                    )
+                ],
+            )
         if task is None:
             return ChatResponse(
                 conversation_id=conversation_id,
@@ -665,11 +693,19 @@ class ConversationOrchestrator:
             )
         if parameter_sets:
             task = self._merge_parameter_sets(task, parameter_sets)
-        task = self._prepare_task(
-            message,
-            task,
-            previous_task=state.task if intent == Intent.TASK_CORRECTION else None,
-        )
+        try:
+            task = self._prepare_task(
+                message,
+                task,
+                previous_task=state.task if intent == Intent.TASK_CORRECTION else None,
+            )
+        except LLMProviderOutputError as error:
+            return ChatResponse(
+                conversation_id=conversation_id,
+                intent=intent,
+                answer=str(error),
+                statements=[EvidenceStatement(category="Warning", text="请明确组分与条件后重试。")],
+            )
         state.task = task
         required_missing = self._missing_conditions(task)
         if required_missing:
@@ -720,7 +756,7 @@ class ConversationOrchestrator:
             return deterministic_intent
         try:
             provider_intent = await self.provider.classify_intent(message)
-        except LLMProviderOutputError:
+        except (LLMProviderError, LLMProviderOutputError):
             return deterministic_intent
         if (
             provider_intent == Intent.EQUILIBRIUM_CALCULATION

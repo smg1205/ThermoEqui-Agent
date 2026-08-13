@@ -6,4 +6,4 @@ requires_binary_parameters: true
 pressure_regime: [low, moderate]
 validation_requirements: [composition_balance, equilibrium_residual, parameter_applicability, phase_stability]
 implementation_status: available
-production_ready: false
+production_ready: true

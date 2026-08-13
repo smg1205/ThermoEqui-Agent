@@ -92,6 +92,18 @@ def _required_parameter(parameters: dict[str, float], keys: tuple[str, ...]) -> 
     raise ValueError(f"Missing one of {keys} in the parameter set.")
 
 
+def _coefficient_parameters(parameters: dict[str, float], prefix: str) -> list[float]:
+    """Build a six-slot thermo coefficient array from constant or a+b/T keys."""
+    normalized = {key.casefold(): value for key, value in parameters.items()}
+    a_key = f"{prefix}_a"
+    b_key = f"{prefix}_b"
+    if a_key in normalized or b_key in normalized:
+        if a_key not in normalized or b_key not in normalized:
+            raise ValueError(f"{prefix} coefficient form requires both {prefix}_a and {prefix}_b.")
+        return [normalized[a_key], normalized[b_key], 0.0, 0.0, 0.0, 0.0]
+    return [_required_parameter(parameters, (prefix,)), 0.0, 0.0, 0.0, 0.0, 0.0]
+
+
 def parameter_set_to_backend_params(
     parameter_set: ParameterSet,
     model_name: str,
@@ -108,17 +120,29 @@ def parameter_set_to_backend_params(
     parameters = parameter_set.parameters
     form = parameter_set.parameter_form.casefold()
     tau = np.zeros((2, 2, 6))
-    if form in {"nrtl", "nrtl binary"}:
-        tau[0, 1, 0] = _required_parameter(parameters, ("tau12", "tau_12"))
-        tau[1, 0, 0] = _required_parameter(parameters, ("tau21", "tau_21"))
+    if form in {
+        "nrtl",
+        "nrtl binary",
+        "nrtl a+b/t binary",
+        "nrtl a-b",
+        "nrtl coefficient",
+    }:
+        tau[0, 1] = _coefficient_parameters(parameters, "tau12")
+        tau[1, 0] = _coefficient_parameters(parameters, "tau21")
         alpha = parameters.get("alpha", 0.3)
         alpha_coeffs = np.zeros((2, 2, 2))
         alpha_coeffs[0, 1, 0] = alpha
         alpha_coeffs[1, 0, 0] = alpha
         return {"tau_coeffs": tau, "alpha_coeffs": alpha_coeffs}
-    if form in {"uniquac", "uniquac binary"}:
-        tau[0, 1, 0] = _required_parameter(parameters, ("tau12", "tau_12"))
-        tau[1, 0, 0] = _required_parameter(parameters, ("tau21", "tau_21"))
+    if form in {
+        "uniquac",
+        "uniquac binary",
+        "uniquac exp(a+b/t) binary",
+        "uniquac a-b",
+        "uniquac coefficient",
+    }:
+        tau[0, 1] = _coefficient_parameters(parameters, "tau12")
+        tau[1, 0] = _coefficient_parameters(parameters, "tau21")
         return {
             "tau_coeffs": tau,
             "rs": np.asarray(
@@ -136,10 +160,16 @@ def parameter_set_to_backend_params(
                 dtype=float,
             ),
         }
-    if form in {"wilson", "wilson binary"}:
+    if form in {
+        "wilson",
+        "wilson binary",
+        "wilson exp(a+b/t) binary",
+        "wilson a-b",
+        "wilson coefficient",
+    }:
         lambda_coeffs = np.zeros((2, 2, 6))
-        lambda_coeffs[0, 1, 0] = _required_parameter(parameters, ("lambda12", "lambda_12"))
-        lambda_coeffs[1, 0, 0] = _required_parameter(parameters, ("lambda21", "lambda_21"))
+        lambda_coeffs[0, 1] = _coefficient_parameters(parameters, "lambda12")
+        lambda_coeffs[1, 0] = _coefficient_parameters(parameters, "lambda21")
         return {
             "Lambda_coeffs": lambda_coeffs,
             "volumes": np.asarray(
