@@ -4,7 +4,7 @@ aliases:
 family: activity_coefficient
 backend: internal
 implementation_status: available
-production_ready: false
+production_ready: true
 supported_equilibrium_types:
   - VLE
   - FLASH
@@ -31,7 +31,7 @@ pressure_regime:
 requires_binary_parameters: true
 parameter_requirements:
   - Reviewed NRTL binary interaction parameters are required
-  - Parameters must be available in the built-in activity-coefficient database or supplied on the request
+  - Parameters must be supplied on the request or seeded from knowledge/parameters
 validation_requirements:
   - composition_balance
   - equilibrium_residual
@@ -40,11 +40,13 @@ validation_requirements:
 scope_notes:
   - Applicable to low- to moderate-pressure non-ideal VLE and flash-style calculations when reviewed NRTL parameters are available.
   - The current shared activity-coefficient backend does not provide executable LLE support in this codebase.
-  - Built-in parameter coverage is limited to reviewed binary systems; production_ready remains false.
+  - ChemSep-reviewed binary parameters for ethanol/water and ethanol/benzene are benchmarked against experimental isobaric VLE data in knowledge/benchmarks.
+  - Additional legacy DECHEMA parameter sets remain available but are not yet production-validated.
 optional_dependency:
 source_refs:
   - knowledge/model_cards/nrtl.yaml
   - thermo_engine/registry.py
   - thermo_engine/nrtl_backend.py
   - thermo_engine/_actcoeff_base.py
-  - thermo_engine/actcoeff_params.py
+  - thermo_engine/parameter_store.py
+  - knowledge/parameters/nrtl.yaml

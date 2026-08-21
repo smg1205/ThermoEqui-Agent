@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from agent.executor import execute_task
 from database.models import CalculationRunRow, ConversationRow, MessageRow, TaskRow
-from database.session import ParameterSetConflictError, Repository, initialize_database
+from database.session import ParameterSetConflictError, Repository, create_database_engine, initialize_database
 from schemas.domain import (
     CalculationEnvelope,
     ComponentIdentity,
@@ -50,6 +50,16 @@ def test_test_fixture_parameter_cannot_enter_production_repository() -> None:
     )
     with pytest.raises(ValueError, match="cannot enter"):
         repository.add_parameter_set(fixture)
+
+
+def test_default_database_is_created_under_local_app_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+
+    engine = create_database_engine()
+
+    assert Path(engine.url.database).resolve() == (tmp_path / "ThermoEqui-Agent" / "thermoequi.db").resolve()
+    assert (tmp_path / "ThermoEqui-Agent").is_dir()
 
 
 def test_duplicate_parameter_set_identifier_is_rejected_without_overwrite() -> None:

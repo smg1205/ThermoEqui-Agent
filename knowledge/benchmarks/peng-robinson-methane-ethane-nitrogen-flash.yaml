@@ -1,0 +1,36 @@
+case_id: pr-methane-ethane-nitrogen-flash-110k
+title: Peng-Robinson reference TP flash for methane/ethane/nitrogen
+task:
+  equilibrium_type: FLASH
+  calculation_type: tp_flash
+  components:
+    - component_id: methane
+      name: Methane
+      cas_number: 74-82-8
+    - component_id: ethane
+      name: Ethane
+      cas_number: 74-84-0
+    - component_id: nitrogen
+      name: Nitrogen
+      cas_number: 7727-37-9
+  conditions:
+    temperature_K: 110.0
+    pressure_kPa: 100.0
+    feed_composition: [0.965, 0.018, 0.017]
+  model_name: Peng-Robinson
+reference:
+  points:
+    - vapor_fraction: 0.0890325
+      liquid_composition: [0.974400, 0.019757, 0.005843]
+      vapor_composition: [0.868821, 0.000025766, 0.131154]
+tolerances:
+  vapor_fraction: 0.0002
+  composition: 0.0002
+  residual: 0.000001
+source:
+  title: CalebBell/thermo Peng-Robinson reference flash case
+  identifier: https://github.com/CalebBell/thermo
+  kind: software_reference
+  notes: Software reference case, not experimental validation data.
+applicable_models:
+  - Peng-Robinson

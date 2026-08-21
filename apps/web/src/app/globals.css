@@ -49,8 +49,8 @@ a {
 
 .top-workspace {
   display: grid;
-  grid-template-columns: 232px minmax(0, 2fr) minmax(300px, 332px);
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 10px;
   background: transparent;
   align-items: start;
   padding: 0 8px 8px;
@@ -60,7 +60,7 @@ a {
 .center-column {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   align-self: start;
   min-width: 0;
   background: transparent;
@@ -270,6 +270,7 @@ a {
   padding: 12px 14px 10px;
   align-self: start;
   width: 100%;
+  min-width: 0;
   border-radius: 18px;
   overflow: hidden;
   border: 1px solid #dbe4ea;
@@ -289,6 +290,8 @@ a {
   align-self: stretch;
   min-height: calc(100vh - 75px);
   width: 100%;
+  min-width: 0;
+  max-width: 360px;
   border-radius: 18px;
   overflow: hidden;
 }
@@ -310,13 +313,13 @@ a {
 .section-heading h2,
 .results-header h2 {
   margin: 0;
-  font-size: 17px;
+  font-size: 19px;
 }
 
 .section-heading > span,
 .results-header > span {
   color: #718392;
-  font-size: 10px;
+  font-size: 11px;
   background: #edf2f5;
   padding: 6px 9px;
   border-radius: 2px;
@@ -330,48 +333,193 @@ a {
   padding-right: 8px;
 }
 
-.messages article {
-  max-width: 88%;
+.message-row {
+  display: flex;
+  width: 100%;
+  justify-content: flex-start;
   margin-bottom: 4px;
 }
 
-.messages article.user {
-  margin-left: auto;
+.message-row.user {
+  justify-content: flex-end;
+}
+
+.message-row.agent {
+  justify-content: flex-start;
+}
+
+.message-bubble {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: fit-content;
+  max-width: 88%;
+}
+
+.message-row.user .message-bubble {
+  align-items: flex-end;
+  max-width: 70%;
   text-align: right;
 }
 
 .messages label {
   display: block;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.13em;
   color: #8294a3;
   margin-bottom: 4px;
 }
 
-.messages p {
+.message-markdown {
   display: inline-block;
+  width: min(100%, 900px);
   margin: 0;
   background: #eef3f5;
-  border-radius: 2px;
-  padding: 7px 9px;
-  line-height: 1.45;
-  font-size: 14px;
+  border-radius: 8px;
+  padding: 10px 12px;
+  line-height: 1.6;
+  font-size: 15px;
   text-align: left;
+  overflow-wrap: anywhere;
 }
 
-.messages .user p {
+.messages .user .message-markdown {
   color: white;
   background: #15374d;
 }
 
+.message-markdown > :first-child {
+  margin-top: 0;
+}
+
+.message-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.message-markdown p,
+.message-markdown ul,
+.message-markdown ol,
+.message-markdown pre,
+.message-markdown table,
+.message-markdown blockquote {
+  margin: 0 0 10px;
+}
+
+.message-markdown h1,
+.message-markdown h2,
+.message-markdown h3,
+.message-markdown h4,
+.message-markdown h5,
+.message-markdown h6 {
+  margin: 0 0 10px;
+  color: inherit;
+  line-height: 1.35;
+}
+
+.message-markdown h1 {
+  font-size: 1.35em;
+}
+
+.message-markdown h2 {
+  font-size: 1.22em;
+}
+
+.message-markdown h3 {
+  font-size: 1.12em;
+}
+
+.message-markdown ul,
+.message-markdown ol {
+  padding-left: 1.4em;
+}
+
+.message-markdown li + li {
+  margin-top: 4px;
+}
+
+.message-markdown strong {
+  font-weight: 700;
+}
+
+.message-markdown code {
+  font-family: Consolas, "SFMono-Regular", monospace;
+  font-size: 0.92em;
+  background: #dfe8ed;
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+
+.messages .user .message-markdown code {
+  background: #244860;
+}
+
+.message-markdown pre {
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #dde6ec;
+}
+
+.message-markdown pre code {
+  display: block;
+  padding: 0;
+  background: transparent;
+}
+
+.messages .user .message-markdown pre {
+  background: #244860;
+}
+
+.message-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95em;
+}
+
+.message-markdown th,
+.message-markdown td {
+  border: 1px solid #cad6de;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.message-markdown th {
+  background: #dde8ee;
+  font-weight: 700;
+}
+
+.messages .user .message-markdown th,
+.messages .user .message-markdown td {
+  border-color: #39627d;
+}
+
+.messages .user .message-markdown th {
+  background: #244860;
+}
+
+.message-markdown blockquote {
+  padding-left: 12px;
+  border-left: 3px solid #8fb0bf;
+  color: #526674;
+}
+
+.messages .user .message-markdown blockquote {
+  border-left-color: #7fb6d4;
+  color: #d5e7f2;
+}
+
+.message-markdown .katex-display {
+  margin: 12px 0;
+  text-align: center;
+}
+
 .composer {
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
+  align-items: stretch;
   border: 1px solid #bdcbd5;
   background: #f8fafb;
   width: 100%;
-  max-width: 1080px;
   align-self: flex-start;
 }
 
@@ -384,6 +532,8 @@ a {
 }
 
 .composer textarea {
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 44px;
   max-height: 160px;
   height: 44px;
@@ -391,6 +541,7 @@ a {
   resize: none;
   padding: 10px 10px;
   line-height: 1.45;
+  font-size: 15px;
   background: transparent;
   outline: none;
   overflow-y: hidden;
@@ -404,6 +555,11 @@ a {
   font-weight: 700;
   padding: 0 18px;
   cursor: pointer;
+}
+
+.composer button {
+  flex: 0 0 140px;
+  width: 140px;
 }
 
 .composer button:disabled,
@@ -528,7 +684,7 @@ a {
 
 .runtime-panel-header h3 {
   margin: 0;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .runtime-flow {
@@ -580,7 +736,7 @@ a {
 }
 
 .runtime-card strong {
-  font-size: 12px;
+  font-size: 14px;
   color: #203243;
   flex: 1;
   line-height: 1.3;
@@ -623,7 +779,7 @@ a {
 .runtime-card-summary {
   margin: 0;
   color: #677b89;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.4;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -981,7 +1137,7 @@ a {
 
 .scientific-validation-header h3 {
   margin: 0;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .scientific-validation-badge {
@@ -1032,14 +1188,14 @@ a {
 .scientific-validation-grid strong {
   display: block;
   color: #213547;
-  font-size: 12px;
+  font-size: 13px;
   margin-bottom: 3px;
 }
 
 .scientific-validation-grid p {
   margin: 0;
   color: #607382;
-  font-size: 9px;
+  font-size: 10px;
   line-height: 1.3;
 }
 
@@ -1058,7 +1214,7 @@ a {
   background: transparent;
   padding: 15px 16px 12px;
   color: #667987;
-  font-size: 14px;
+  font-size: 15px;
   white-space: nowrap;
   cursor: pointer;
 }
@@ -1098,7 +1254,7 @@ a {
 
 .panel-heading h3 {
   margin: 0;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .panel-heading > span {
@@ -1132,12 +1288,12 @@ a {
 
 .empty h3 {
   margin: 4px 0;
-  font-size: 15px;
+  font-size: 17px;
   color: #506473;
 }
 
 .empty p {
-  font-size: 12px;
+  font-size: 13px;
   max-width: 520px;
 }
 
@@ -1421,7 +1577,7 @@ tbody tr:nth-child(even) {
 }
 
 .chart-shell {
-  padding: 0 6px 6px;
+  padding: 0 10px 10px;
 }
 
 .results-actions {
@@ -1444,20 +1600,11 @@ tbody tr:nth-child(even) {
 
 @media (max-width: 1100px) {
   .top-workspace {
-    grid-template-columns: 220px 1fr;
-  }
-
-  .sidebar {
-    grid-row: auto;
-  }
-
-  .center-column,
-  .task-panel {
-    grid-column: 2;
+    grid-template-columns: minmax(0, 1fr) 320px;
   }
 
   .task-panel {
-    max-width: none;
+    max-width: 320px;
   }
 
   .task-panel,
@@ -1541,8 +1688,12 @@ tbody tr:nth-child(even) {
     overflow: visible;
   }
 
+  .task-panel {
+    max-width: none;
+  }
+
   .composer {
-    grid-template-columns: 1fr;
+    flex-direction: column;
     max-width: none;
   }
 

@@ -10,13 +10,17 @@ from thermo_engine.backend import ThermodynamicBackend
 from thermo_engine.clapeyron_backend import ClapeyronPengRobinsonBackend
 from thermo_engine.errors import ThermoEquiError
 from thermo_engine.ideal import IdealRaoultBackend
+from thermo_engine.nrtl_backend import NrtlBackend
+from thermo_engine.pgssi_backend import PgssiBackend
+from thermo_engine.ghgeat_backend import GhgeatBackend
 from thermo_engine.phasepy_backend import PhasepyPengRobinsonBackend
 from thermo_engine.properties import resolve_component
+from thermo_engine.rk_backend import ThermoRkBackend
+from thermo_engine.srk_backend import ThermoSrkBackend
 from thermo_engine.thermo_backend import ThermoPengRobinsonBackend
-from thermo_engine.nrtl_backend import NrtlBackend
+from thermo_engine.unifac_backend import UnifacBackend, has_unifac_group_assignments
 from thermo_engine.uniquac_backend import UniquacBackend
 from thermo_engine.wilson_backend import WilsonBackend
-from thermo_engine.actcoeff_params import lookup_nrtl, lookup_uniquac
 
 
 @dataclass(frozen=True)
@@ -74,6 +78,9 @@ class ThermodynamicBackendRegistry:
             reason = "Peng-Robinson was selected because the components are outside the local Ideal registry."
         elif _has_activity_coeff_params(task):
             selected, reason = _route_activity_coeff_model(task)
+        elif has_unifac_group_assignments(task.components):
+            selected = "UNIFAC"
+            reason = "UNIFAC pilot auto-selected because no production model or parameter set applies."
         else:
             raise ThermoEquiError(
                 FailureType.PARAMETER_OUT_OF_DOMAIN,
@@ -102,25 +109,44 @@ class ThermodynamicBackendRegistry:
                 f"Model {registration.canonical_name} does not implement {task.calculation_type}.",
                 "Choose a calculation supported by the selected model.",
             )
-        return registration.factory()
+        backend = registration.factory()
+        backend.parameter_sources(task)
+        return backend
+
 
 def _has_activity_coeff_params(task: TaskManifest) -> bool:
     """Check if the component set exists in any activity-coefficient parameter database."""
-    names = [c.name for c in task.components]
-    return lookup_nrtl(names) is not None or lookup_uniquac(names) is not None
+    return any(
+        parameter_set.model_name.casefold() in {"nrtl", "uniquac", "wilson"}
+        and [name.casefold() for name in parameter_set.component_order]
+        == [component.name.casefold() for component in task.components]
+        for parameter_set in task.parameters
+    )
 
 
 def _route_activity_coeff_model(task: TaskManifest) -> tuple[str, str]:
     """Select the best available activity-coefficient model for this system.
     Priority: NRTL (most general) > UNIQUAC > Wilson.
     """
-    names = [c.name for c in task.components]
-    if lookup_nrtl(names) is not None:
-        return ("NRTL", "NRTL auto-selected for low-pressure system with reviewed binary interaction parameters.")
-    if lookup_uniquac(names) is not None:
-        return ("UNIQUAC", "UNIQUAC auto-selected for low-pressure system with reviewed binary interaction parameters.")
-    # Wilson is the last resort; if none match, the caller should not reach here
-    return ("Wilson", "Wilson auto-selected for low-pressure system with reviewed binary interaction parameters.")
+    requested = {
+        parameter_set.model_name.casefold()
+        for parameter_set in task.parameters
+        if [name.casefold() for name in parameter_set.component_order]
+        == [component.name.casefold() for component in task.components]
+    }
+    preferences = (
+        ("nrtl", "NRTL", "NRTL auto-selected from the request parameter set."),
+        ("uniquac", "UNIQUAC", "UNIQUAC auto-selected from the request parameter set."),
+        ("wilson", "Wilson", "Wilson auto-selected from the request parameter set."),
+    )
+    for key, model_name, reason in preferences:
+        if key in requested:
+            return (model_name, reason)
+    raise ThermoEquiError(
+        FailureType.MISSING_PARAMETERS,
+        "No matching activity-coefficient parameter set is present on the task.",
+        "Provide a reviewed or user-attested parameter set whose component_order matches the task.",
+    )
 
 
 DEFAULT_BACKEND_REGISTRY = ThermodynamicBackendRegistry(
@@ -137,7 +163,6 @@ DEFAULT_BACKEND_REGISTRY = ThermodynamicBackendRegistry(
                     "tp_flash",
                     "phase_stability",
                     "azeotrope",
-                    "lle",
                 }
             ),
             factory=IdealRaoultBackend,
@@ -157,6 +182,68 @@ DEFAULT_BACKEND_REGISTRY = ThermodynamicBackendRegistry(
                 }
             ),
             factory=ThermoPengRobinsonBackend,
+        ),
+        BackendRegistration(
+            canonical_name="SRK",
+            aliases=frozenset(
+                {
+                    "srk",
+                    "soave-redlich-kwong",
+                    "soave redlich kwong",
+                    "srk eos",
+                }
+            ),
+            supported_calculations=frozenset(
+                {
+                    "bubble_point",
+                    "dew_point",
+                    "isobaric_vle",
+                    "isothermal_vle",
+                    "tp_flash",
+                    "phase_stability",
+                    "azeotrope",
+                }
+            ),
+            factory=ThermoSrkBackend,
+        ),
+        BackendRegistration(
+            canonical_name="UNIFAC",
+            aliases=frozenset({"unifac"}),
+            supported_calculations=frozenset(
+                {
+                    "bubble_point",
+                    "dew_point",
+                    "isobaric_vle",
+                    "isothermal_vle",
+                    "tp_flash",
+                    "phase_stability",
+                    "azeotrope",
+                }
+            ),
+            factory=UnifacBackend,
+        ),
+        BackendRegistration(
+            canonical_name="RK",
+            aliases=frozenset(
+                {
+                    "rk",
+                    "redlich-kwong",
+                    "redlich kwong",
+                    "rk eos",
+                }
+            ),
+            supported_calculations=frozenset(
+                {
+                    "bubble_point",
+                    "dew_point",
+                    "isobaric_vle",
+                    "isothermal_vle",
+                    "tp_flash",
+                    "phase_stability",
+                    "azeotrope",
+                }
+            ),
+            factory=ThermoRkBackend,
         ),
         BackendRegistration(
             canonical_name="Phasepy/Peng-Robinson",
@@ -214,7 +301,6 @@ DEFAULT_BACKEND_REGISTRY = ThermodynamicBackendRegistry(
                     "tp_flash",
                     "phase_stability",
                     "azeotrope",
-                    "lle",
                 }
             ),
             factory=NrtlBackend,
@@ -231,7 +317,6 @@ DEFAULT_BACKEND_REGISTRY = ThermodynamicBackendRegistry(
                     "tp_flash",
                     "phase_stability",
                     "azeotrope",
-                    "lle",
                 }
             ),
             factory=UniquacBackend,
@@ -251,6 +336,18 @@ DEFAULT_BACKEND_REGISTRY = ThermodynamicBackendRegistry(
                 }
             ),
             factory=WilsonBackend,
+        ),
+        BackendRegistration(
+            canonical_name="PGSSI",
+            aliases=frozenset({"pgssi", "pgssi gamma-infinity", "pgssi gamma infinity"}),
+            supported_calculations=frozenset({"infinite_dilution_activity"}),
+            factory=PgssiBackend,
+        ),
+        BackendRegistration(
+            canonical_name="GHGEAT",
+            aliases=frozenset({"ghgeat", "ghgeat gamma-infinity", "ghgeat gamma infinity"}),
+            supported_calculations=frozenset({"infinite_dilution_activity"}),
+            factory=GhgeatBackend,
         ),
     )
 )

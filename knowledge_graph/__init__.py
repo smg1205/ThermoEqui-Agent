@@ -1,15 +1,23 @@
 """Knowledge graph module for thermodynamic domain entities and relationships."""
 
-from knowledge_graph.entity_extractor import Entity, EntityExtractor, ThermoEntityExtractor, EntityType
+from knowledge_graph.entity_extractor import Entity, EntityExtractor, EntityType, ThermoEntityExtractor
 from knowledge_graph.graph import KnowledgeGraph, Node, Relationship, RelationshipType
-from knowledge_graph.query_engine import GraphQueryEngine, GraphQueryResult
 from knowledge_graph.kg_builder import GraphBuilder, build_graph_from_kb
+from knowledge_graph.query_engine import GraphQueryEngine, GraphQueryResult
 
 __all__ = [
-    "Entity", "EntityExtractor", "ThermoEntityExtractor", "EntityType",
-    "KnowledgeGraph", "Node", "Relationship", "RelationshipType",
-    "GraphQueryEngine", "GraphQueryResult",
-    "GraphBuilder", "build_graph_from_kb",
+    "Entity",
+    "EntityExtractor",
+    "ThermoEntityExtractor",
+    "EntityType",
+    "KnowledgeGraph",
+    "Node",
+    "Relationship",
+    "RelationshipType",
+    "GraphQueryEngine",
+    "GraphQueryResult",
+    "GraphBuilder",
+    "build_graph_from_kb",
 ]
 
 
@@ -44,10 +52,22 @@ def test_p0_fixes():
 
     print("\n[测试4] 模拟构建图谱并查询任务")
     model_cards = [
-        {"model_name": "NRTL", "family": "activity_coefficient", "implementation_status": "available",
-         "pressure_regime": ["low"], "supported_tasks": ["VLE", "LLE"], "excluded_systems": ["water", "alcohol"]},
-        {"model_name": "Peng-Robinson", "family": "equation_of_state", "implementation_status": "available",
-         "pressure_regime": ["high"], "supported_tasks": ["VLE", "density"], "excluded_systems": ["polar"]},
+        {
+            "model_name": "NRTL",
+            "family": "activity_coefficient",
+            "implementation_status": "available",
+            "pressure_regime": ["low"],
+            "supported_tasks": ["VLE", "LLE"],
+            "excluded_systems": ["water", "alcohol"],
+        },
+        {
+            "model_name": "Peng-Robinson",
+            "family": "equation_of_state",
+            "implementation_status": "available",
+            "pressure_regime": ["high"],
+            "supported_tasks": ["VLE", "density"],
+            "excluded_systems": ["polar"],
+        },
     ]
     kg3 = KnowledgeGraph()
     kg3.build_from_model_cards(model_cards)

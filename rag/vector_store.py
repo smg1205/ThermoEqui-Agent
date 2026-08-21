@@ -24,7 +24,7 @@ class VectorStore:
     records: list[EmbeddingRecord] = field(default_factory=list)
 
     def add(self, chunks: list[Chunk], embeddings: list[np.ndarray]) -> None:
-        for chunk, embedding in zip(chunks, embeddings):
+        for chunk, embedding in zip(chunks, embeddings, strict=False):
             self.records.append(EmbeddingRecord(chunk=chunk, embedding=embedding))
 
     def search(

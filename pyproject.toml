@@ -31,6 +31,9 @@ requires-python = ">=3.11"
   skills = [
     "sentence-transformers>=2.2.0",
   ]
+  dwsim = [
+    "pythonnet>=3.0.3",
+  ]
   dev = [
   "mypy==1.14.1",
   "pytest==8.3.4",
@@ -41,12 +44,13 @@ requires-python = ">=3.11"
 
 [project.scripts]
 thermoequi = "thermo_engine.cli:main"
+thermoequi-seed = "thermo_engine.seed:main"
 
 [tool.setuptools.packages.find]
-include = ["agent*", "apps*", "database*", "schemas*", "thermo_engine*"]
+include = ["agent*", "apps*", "benchmarks*", "database*", "schemas*", "thermo_engine*"]
 
 [tool.pytest.ini_options]
-addopts = "-q --strict-markers -p no:cacheprovider"
+addopts = "-q --strict-markers -p no:cacheprovider --basetemp=.pytest-tmp"
 testpaths = ["tests", "evals"]
 asyncio_default_fixture_loop_scope = "function"
 

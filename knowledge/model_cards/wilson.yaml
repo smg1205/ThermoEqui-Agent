@@ -1,8 +1,9 @@
 model_name: Wilson
 family: activity_coefficient
-supported_tasks: [VLE]
-excluded_systems: [electrolyte, LLE]
+supported_tasks: [VLE, FLASH]
+excluded_systems: [electrolyte, LLE, reactive, SLE, polymer, hydrate, petroleum_pseudocomponent, VLLE]
 requires_binary_parameters: true
 pressure_regime: [low, moderate]
-validation_requirements: [composition_balance, equilibrium_residual, parameter_applicability]
-implementation_status: contract_only
+validation_requirements: [composition_balance, equilibrium_residual, parameter_applicability, phase_stability]
+implementation_status: available
+production_ready: true

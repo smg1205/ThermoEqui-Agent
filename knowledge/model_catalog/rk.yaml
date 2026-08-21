@@ -1,0 +1,51 @@
+name: RK
+aliases:
+  - rk
+  - redlich-kwong
+  - redlich kwong
+  - rk eos
+family: cubic_eos
+backend: thermo
+implementation_status: available
+production_ready: false
+supported_equilibrium_types:
+  - VLE
+  - FLASH
+supported_calculation_types:
+  - bubble_point
+  - dew_point
+  - isobaric_vle
+  - isothermal_vle
+  - tp_flash
+  - phase_stability
+  - azeotrope
+excluded_systems:
+  - electrolyte
+  - strongly_associating_without_extension
+  - reactive
+  - SLE
+  - polymer
+  - hydrate
+  - petroleum_pseudocomponent
+  - VLLE
+pressure_regime:
+  - moderate
+  - high
+requires_binary_parameters: true
+parameter_requirements:
+  - Reviewed or user-attested RK kij ParameterSet for the binary component pair
+  - Components must be hydrocarbons or reviewed allowlisted light gases
+validation_requirements:
+  - composition_balance
+  - fugacity_equality
+  - phase_stability
+scope_notes:
+  - Pilot RK adapter using CalebBell/thermo RKMIX and FlashVL.
+  - Binary-only until reviewed multicomponent pairwise kij support exists.
+  - production_ready remains false until parameter coverage and benchmark closure are complete.
+optional_dependency:
+source_refs:
+  - knowledge/model_cards/rk.yaml
+  - thermo_engine/registry.py
+  - thermo_engine/rk_backend.py
+  - tests/test_rk_backend.py

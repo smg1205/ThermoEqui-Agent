@@ -91,9 +91,7 @@ class MarkdownSplitter:
             )
 
         for i, chunk in enumerate(chunks):
-            chunks[i] = chunk.__class__(
-                **{**chunk.__dict__, "total_chunks": len(chunks)}
-            )
+            chunks[i] = chunk.__class__(**{**chunk.__dict__, "total_chunks": len(chunks)})
 
         return chunks
 
@@ -149,7 +147,6 @@ class SemanticSplitter:
 
         # 初步切分：根据相似度阈值和最大长度
         split_indices = [0]
-        current_start = 0
         accumulated_len = 0
 
         for i, sim in enumerate(similarities):
@@ -158,11 +155,9 @@ class SemanticSplitter:
             if sim < self.similarity_threshold:
                 if accumulated_len >= self.min_chunk_size:
                     split_indices.append(i + 1)
-                    current_start = i + 1
                     accumulated_len = 0
             elif accumulated_len > self.max_chunk_size:
                 split_indices.append(i + 1)
-                current_start = i + 1
                 accumulated_len = 0
 
         if split_indices[-1] < len(sentences):

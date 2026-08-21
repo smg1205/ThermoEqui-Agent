@@ -6,9 +6,11 @@ import logging
 import re
 
 import yaml
+
 from rag.retriever import KnowledgeRetriever, RetrievedChunk
-from .skill_base import KnowledgeSkill, SkillResult
+
 from .llm_client import LLMClient
+from .skill_base import KnowledgeSkill, SkillResult
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +42,7 @@ class ParameterQuerySkill(KnowledgeSkill):
         if not self._retriever_loaded:
             if self._retriever is None:
                 from rag.retriever import DEFAULT_RETRIEVER
+
                 self._retriever = DEFAULT_RETRIEVER
             self._retriever_loaded = True
         return self._retriever
@@ -69,12 +72,12 @@ class ParameterQuerySkill(KnowledgeSkill):
                 return data
         except yaml.YAMLError:
             pass
-        
+
         # 尝试解析格式化文本："模型名称：xxx；模型家族：xxx；..."
         if "：" in content or ":" in content:
             result = {}
             # 按分号分割字段
-            parts = re.split(r'[;；]', content)
+            parts = re.split(r"[;；]", content)
             field_mappings = {
                 "模型名称": "model_name",
                 "模型家族": "family",
@@ -89,12 +92,14 @@ class ParameterQuerySkill(KnowledgeSkill):
                 "名称": "name",
                 "参数": "parameters",
             }
-            
+
             for part in parts:
                 part = part.strip()
                 for cn_name, en_name in field_mappings.items():
                     if part.startswith(cn_name + "：") or part.startswith(cn_name + ":"):
-                        value = part[len(cn_name) + 1:].strip() if cn_name + "：" in part or cn_name + ":" in part else ""
+                        value = (
+                            part[len(cn_name) + 1 :].strip() if cn_name + "：" in part or cn_name + ":" in part else ""
+                        )
                         # 转换值
                         if value in ["是", "true", "True"]:
                             result[en_name] = True
@@ -105,19 +110,19 @@ class ParameterQuerySkill(KnowledgeSkill):
                         else:
                             result[en_name] = value
                         break
-            
+
             if result and ("model_name" in result or "name" in result):
                 return result
-        
+
         return None
 
     def _format_card_answer(self, card_data: dict, query: str) -> str:
         """将解析的卡片数据格式化为答案"""
         model_name = card_data.get("model_name") or card_data.get("name") or "未知模型"
-        
+
         # 检查用户是否询问特定字段
         specific_field = self._detect_specific_field(query)
-        
+
         if specific_field:
             value = card_data.get(specific_field)
             if value is not None:
@@ -132,10 +137,10 @@ class ParameterQuerySkill(KnowledgeSkill):
             else:
                 field_display = self._get_field_display_name(specific_field)
                 return f"⚠️ 未找到 {model_name} 的{field_display}"
-        
+
         # 返回完整参数信息
         lines = [f"**【{model_name}】**"]
-        
+
         field_mappings = [
             ("family", "模型家族"),
             ("supported_tasks", "支持的任务"),
@@ -144,7 +149,7 @@ class ParameterQuerySkill(KnowledgeSkill):
             ("pressure_regime", "压力范围"),
             ("implementation_status", "实现状态"),
         ]
-        
+
         for field_key, display_name in field_mappings:
             value = card_data.get(field_key)
             if value is None:
@@ -155,7 +160,7 @@ class ParameterQuerySkill(KnowledgeSkill):
                 lines.append(f"- {display_name}: {'是' if value else '否'}")
             else:
                 lines.append(f"- {display_name}: {value}")
-        
+
         return "\n".join(lines)
 
     def _detect_specific_field(self, query: str) -> str | None:
@@ -168,7 +173,7 @@ class ParameterQuerySkill(KnowledgeSkill):
             "pressure_regime": ["压力范围", "pressure", "压力", "pressure_regime"],
             "implementation_status": ["实现状态", "implementation_status", "状态", "status"],
         }
-        
+
         query_lower = query.lower()
         for field, keywords in field_keywords.items():
             for kw in keywords:
@@ -242,12 +247,7 @@ class ParameterQuerySkill(KnowledgeSkill):
 
         result = []
         for doc in target_docs:
-            chunk = RetrievedChunk(
-                content=doc.content,
-                source=doc.source,
-                category="model_cards",
-                similarity=0.05
-            )
+            chunk = RetrievedChunk(content=doc.content, source=doc.source, category="model_cards", similarity=0.05)
             result.append(chunk)
 
         return result
@@ -268,7 +268,7 @@ class ParameterQuerySkill(KnowledgeSkill):
         if short_name and full_name:
             # 强制加载模型卡片
             card_chunks = self._force_retrieve_model_card(short_name, full_name)
-            
+
             if card_chunks:
                 # 直接解析 YAML 卡片
                 for chunk in card_chunks:
@@ -336,7 +336,7 @@ class ParameterQuerySkill(KnowledgeSkill):
 ## 输出格式
 直接回答用户的问题，不需要重复用户的问题。
 
-用户正在询问关于 **{full_name or '未知模型'}** 模型的参数信息。
+用户正在询问关于 **{full_name or "未知模型"}** 模型的参数信息。
 """
 
         answer = self._synthesize_with_llm(

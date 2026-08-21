@@ -1,5 +1,9 @@
 """Start the ThermoEqui-Agent API server with DeepSeek provider."""
-import os, subprocess, sys, time
+
+import os
+import subprocess
+import sys
+import time
 
 os.environ["LLM_PROVIDER"] = "deepseek"
 os.environ["DEEPSEEK_API_KEY"] = ""
@@ -7,8 +11,7 @@ os.environ["DEEPSEEK_MODEL"] = "deepseek-v4-flash"
 os.environ["DEEPSEEK_BASE_URL"] = "https://api.deepseek.com"
 
 proc = subprocess.Popen(
-    [sys.executable, "-m", "uvicorn", "apps.api.main:app",
-     "--host", "127.0.0.1", "--port", "8000"],
+    [sys.executable, "-m", "uvicorn", "apps.api.main:app", "--host", "127.0.0.1", "--port", "8000"],
     cwd=r"../ThermoEqui-Agent-SMH",
 )
 time.sleep(5)

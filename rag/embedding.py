@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import warnings
 from typing import Protocol
 
@@ -43,11 +44,10 @@ class SentenceTransformerEmbedding:
                 from sentence_transformers import SentenceTransformer
 
                 self._model = SentenceTransformer(self.model_name)
-            except ImportError:
+            except ImportError as exc:
                 raise RuntimeError(
-                    "sentence-transformers is not installed. "
-                    "Install with: pip install sentence-transformers"
-                )
+                    "sentence-transformers is not installed. Install with: pip install sentence-transformers"
+                ) from exc
         return self._model
 
     def embed(self, texts: list[str]) -> list[np.ndarray]:
@@ -56,7 +56,30 @@ class SentenceTransformerEmbedding:
         return [np.array(e) for e in embeddings]
 
 
-try:
-    DEFAULT_EMBEDDER = HashEmbedding()
-except ImportError:
-    DEFAULT_EMBEDDER = HashEmbedding()
+def _create_default_embedder() -> EmbeddingModel:
+    """Create the best available embedder.
+
+    Prefers SentenceTransformer for real semantic embeddings.
+    Falls back to HashEmbedding when the model or dependencies are unavailable
+    (e.g. offline environments, CI without model weights).
+
+    Set ``HF_ENDPOINT`` to a mirror (e.g. ``https://hf-mirror.com``) if
+    huggingface.co is unreachable.
+    """
+    if "HF_ENDPOINT" not in os.environ:
+        os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+    try:
+        embedder = SentenceTransformerEmbedding()
+        # Eagerly load to fail fast if the model cannot be downloaded/loaded
+        embedder._get_model()
+        return embedder
+    except Exception:
+        warnings.warn(
+            "SentenceTransformer unavailable — falling back to HashEmbedding. "
+            "Install sentence-transformers and ensure model access for semantic retrieval.",
+            stacklevel=2,
+        )
+        return HashEmbedding()
+
+
+DEFAULT_EMBEDDER = _create_default_embedder()

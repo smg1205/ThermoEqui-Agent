@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from rag.retriever import KnowledgeRetriever, RetrievedChunk
 from rag.splitter import Chunk
-from .skill_base import KnowledgeSkill, SkillResult
+
 from .llm_client import LLMClient
+from .skill_base import KnowledgeSkill, SkillResult
 
 
 class KnowledgeQASkill(KnowledgeSkill):
@@ -25,6 +26,7 @@ class KnowledgeQASkill(KnowledgeSkill):
         if not self._retriever_loaded:
             if self._retriever is None:
                 from rag.retriever import DEFAULT_RETRIEVER
+
                 self._retriever = DEFAULT_RETRIEVER
             self._retriever_loaded = True
         return self._retriever
@@ -40,9 +42,22 @@ class KnowledgeQASkill(KnowledgeSkill):
 
     def _is_parameter_query(self, query: str) -> bool:
         param_keywords = [
-            "参数", "parameter", "临界", "critical", "acentric", "偏心因子",
-            "Tc", "Pc", "常数", "constant", "系数", "coefficient",
-            "压力范围", "pressure", "温度范围", "temperature"
+            "参数",
+            "parameter",
+            "临界",
+            "critical",
+            "acentric",
+            "偏心因子",
+            "Tc",
+            "Pc",
+            "常数",
+            "constant",
+            "系数",
+            "coefficient",
+            "压力范围",
+            "pressure",
+            "温度范围",
+            "temperature",
         ]
         return any(kw in query.lower() for kw in param_keywords)
 
@@ -70,9 +85,9 @@ class KnowledgeQASkill(KnowledgeSkill):
 
             # 如果是参数查询或特征查询，额外加载 fundamentals 文档
             if self._is_parameter_query(query) or self._is_feature_query(query):
+                from rag.embedding import DEFAULT_EMBEDDER
                 from rag.loader import KnowledgeLoader
                 from rag.splitter import SemanticSplitter
-                from rag.embedding import DEFAULT_EMBEDDER
 
                 all_docs = KnowledgeLoader.load_all()
                 fundamental_docs = [d for d in all_docs if "fundamentals" in d.source]
@@ -177,7 +192,15 @@ class KnowledgeQASkill(KnowledgeSkill):
                 "chunk_count": len(chunks),
                 "llm_used": self._llm_available,
                 "temperature": self._temperature,
-                "query_type": "parameter" if self._is_parameter_query(query) else "feature" if self._is_feature_query(query) else "concept" if self._is_concept_query(query) else "general",
+                "query_type": (
+                    "parameter"
+                    if self._is_parameter_query(query)
+                    else "feature"
+                    if self._is_feature_query(query)
+                    else "concept"
+                    if self._is_concept_query(query)
+                    else "general"
+                ),
             },
         )
 

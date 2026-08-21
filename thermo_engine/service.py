@@ -117,6 +117,7 @@ def calculate_equilibrium(
         "phase_stability": selected.phase_stability,
         "azeotrope": selected.azeotrope,
         "lle": selected.lle,
+        "infinite_dilution_activity": selected.infinite_dilution_activity,
     }
     operation = operations.get(task_manifest.calculation_type)
     if operation is None:

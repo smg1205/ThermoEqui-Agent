@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from knowledge_graph.query_engine import GraphQueryEngine
 from knowledge_graph.graph import KnowledgeGraph
-from .skill_base import KnowledgeSkill, SkillResult
+from knowledge_graph.query_engine import GraphQueryEngine
+
 from .llm_client import LLMClient
+from .skill_base import KnowledgeSkill, SkillResult
 
 
 class GraphQuerySkill(KnowledgeSkill):
@@ -57,10 +58,12 @@ class GraphQuerySkill(KnowledgeSkill):
                     node_id_lower = node_id.lower()
                     node_label_lower = node.label.lower()
                     for term in search_terms:
-                        if (term in node_id_lower or
-                            term in node_label_lower or
-                            node_id_lower.endswith(f":{term}") or
-                            node_label_lower == term):
+                        if (
+                            term in node_id_lower
+                            or term in node_label_lower
+                            or node_id_lower.endswith(f":{term}")
+                            or node_label_lower == term
+                        ):
                             if node.id not in matched_ids:
                                 matched_nodes.append(node)
                                 matched_ids.add(node.id)
@@ -74,29 +77,35 @@ class GraphQuerySkill(KnowledgeSkill):
         visited_ids = set()
 
         for node in matched_nodes:
-            nodes.append({
-                "id": node.id,
-                "label": node.label,
-                "type": node.type,
-                "attributes": node.attributes,
-            })
+            nodes.append(
+                {
+                    "id": node.id,
+                    "label": node.label,
+                    "type": node.type,
+                    "attributes": node.attributes,
+                }
+            )
             visited_ids.add(node.id)
 
             for neighbor, rel in self.query_engine.graph.neighbors(node.id):
                 if neighbor.id not in visited_ids:
-                    nodes.append({
-                        "id": neighbor.id,
-                        "label": neighbor.label,
-                        "type": neighbor.type,
-                        "attributes": neighbor.attributes,
-                    })
+                    nodes.append(
+                        {
+                            "id": neighbor.id,
+                            "label": neighbor.label,
+                            "type": neighbor.type,
+                            "attributes": neighbor.attributes,
+                        }
+                    )
                     visited_ids.add(neighbor.id)
-                relationships.append({
-                    "source": node.id,
-                    "target": neighbor.id,
-                    "type": rel.type.value,
-                    "attributes": rel.attributes,
-                })
+                relationships.append(
+                    {
+                        "source": node.id,
+                        "target": neighbor.id,
+                        "type": rel.type.value,
+                        "attributes": rel.attributes,
+                    }
+                )
 
         return nodes, relationships
 

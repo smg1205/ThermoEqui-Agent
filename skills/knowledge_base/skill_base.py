@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from .llm_client import LLMClient, get_default_llm
 
@@ -12,6 +12,7 @@ from .llm_client import LLMClient, get_default_llm
 @dataclass(frozen=True)
 class SkillResult:
     """技能执行结果"""
+
     answer: str
     sources: list[str]
     confidence: float
@@ -21,7 +22,7 @@ class SkillResult:
 class KnowledgeSkill(ABC):
     """知识技能抽象基类，支持可插拔 LLM"""
 
-    def __init__(self, llm: Optional[LLMClient] = None, temperature: float = 0.3) -> None:
+    def __init__(self, llm: LLMClient | None = None, temperature: float = 0.3) -> None:
         self._llm = llm or get_default_llm()
         self._llm_available = self._llm is not None
         self._temperature = temperature  # 允许每个技能设置不同的温度
@@ -49,8 +50,8 @@ class KnowledgeSkill(ABC):
         self,
         query: str,
         context: str,
-        system_prompt: Optional[str] = None,
-        temperature: Optional[float] = None,
+        system_prompt: str | None = None,
+        temperature: float | None = None,
     ) -> str:
         """
         使用 LLM 合成答案，若不可用则降级为简单拼接
@@ -102,6 +103,6 @@ class KnowledgeSkill(ABC):
                 system_prompt=system_prompt,
                 temperature=temp,
             )
-        except Exception as e:
+        except Exception:
             # LLM 调用失败时降级
             return f"📚 根据知识库内容：\n\n{context}\n\n（注：LLM合成失败，已降级为原始内容）"

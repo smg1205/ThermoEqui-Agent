@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from schemas.domain import Intent
+
 from .graph_query_skill import GraphQuerySkill
 from .knowledge_qa_skill import KnowledgeQASkill
-from .parameter_query_skill import ParameterQuerySkill
 from .model_recommendation_skill import ModelRecommendationSkill
+from .parameter_query_skill import ParameterQuerySkill
 from .skill_base import KnowledgeSkill, SkillResult
-from schemas.domain import Intent
+
 
 class SkillRegistry:
     def __init__(self) -> None:
@@ -21,10 +22,7 @@ class SkillRegistry:
         return self._skills.get(name)
 
     def list_skills(self) -> list[dict[str, str]]:
-        return [
-            {"name": skill.name(), "description": skill.description()}
-            for skill in self._skills.values()
-        ]
+        return [{"name": skill.name(), "description": skill.description()} for skill in self._skills.values()]
 
     def execute_skill(self, name: str, query: str, **kwargs) -> SkillResult:
         skill = self.get_skill(name)
@@ -43,10 +41,7 @@ class SkillRegistry:
                 intent = Intent(intent)
             except ValueError:
                 return []
-        return [
-            skill for skill in self._skills.values()
-            if skill.supports_intent(intent.value)
-        ]
+        return [skill for skill in self._skills.values() if skill.supports_intent(intent.value)]
 
 
 # 创建默认注册表并注册所有技能

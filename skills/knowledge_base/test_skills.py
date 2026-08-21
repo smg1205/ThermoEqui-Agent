@@ -10,15 +10,15 @@ if str(PROJECT_ROOT) not in sys.path:
 
 print(f"项目根目录: {PROJECT_ROOT}")
 
-from skills.knowledge_base.knowledge_qa_skill import KnowledgeQASkill
-from skills.knowledge_base.graph_query_skill import GraphQuerySkill
-from skills.knowledge_base.parameter_query_skill import ParameterQuerySkill
-from skills.knowledge_base.llm_client import ZhipuClient
+from skills.knowledge_base.graph_query_skill import GraphQuerySkill  # noqa: E402
+from skills.knowledge_base.knowledge_qa_skill import KnowledgeQASkill  # noqa: E402
+from skills.knowledge_base.llm_client import ZhipuClient  # noqa: E402
+from skills.knowledge_base.parameter_query_skill import ParameterQuerySkill  # noqa: E402
 
 
 def test_skill(skill, query: str, skill_name: str, expected_keywords: list[str] = None):
     """通用测试函数，可检查预期关键词"""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"测试 {skill_name}")
     print(f"查询: {query}")
     print("-" * 60)
@@ -65,60 +65,23 @@ def main():
             knowledge_qa,
             "Wilson 模型的特点是什么？",
             "Knowledge QA",
-            ["局部组成", "local composition", "二元参数", "LLE"]
+            ["局部组成", "local composition", "二元参数", "LLE"],
         ),
         (
             knowledge_qa,
             "Peng-Robinson 方程的关键参数有哪些？",
             "Knowledge QA",
-            ["偏心因子", "acentric", "临界温度", "critical temperature"]
+            ["偏心因子", "acentric", "临界温度", "critical temperature"],
         ),
-        (
-            knowledge_qa,
-            "什么是 TP Flash？",
-            "Knowledge QA",
-            ["闪蒸", "vapor fraction", "Rachford-Rice"]
-        ),
-
+        (knowledge_qa, "什么是 TP Flash？", "Knowledge QA", ["闪蒸", "vapor fraction", "Rachford-Rice"]),
         # Graph Query 测试（知识图谱）
-        (
-            graph_query,
-            "SRK 模型不适用于什么体系？",
-            "Graph Query",
-            ["electrolyte", "电解质"]
-        ),
-        (
-            graph_query,
-            "Wilson 模型支持什么任务？",
-            "Graph Query",
-            ["VLE"]
-        ),
-        (
-            graph_query,
-            "NRTL 模型排除什么体系？",
-            "Graph Query",
-            ["electrolyte"]
-        ),
-
+        (graph_query, "SRK 模型不适用于什么体系？", "Graph Query", ["electrolyte", "电解质"]),
+        (graph_query, "Wilson 模型支持什么任务？", "Graph Query", ["VLE"]),
+        (graph_query, "NRTL 模型排除什么体系？", "Graph Query", ["electrolyte"]),
         # Parameter Query 测试（参数提取）
-        (
-            parameter_query,
-            "Wilson 模型需要二元参数吗？",
-            "Parameter Query",
-            ["true", "是", "需要"]
-        ),
-        (
-            parameter_query,
-            "PR 模型的压力范围是什么？",
-            "Parameter Query",
-            ["moderate", "high", "中压", "高压"]
-        ),
-        (
-            parameter_query,
-            "NRTL 的实现状态是什么？",
-            "Parameter Query",
-            ["contract_only"]
-        ),
+        (parameter_query, "Wilson 模型需要二元参数吗？", "Parameter Query", ["true", "是", "需要"]),
+        (parameter_query, "PR 模型的压力范围是什么？", "Parameter Query", ["moderate", "high", "中压", "高压"]),
+        (parameter_query, "NRTL 的实现状态是什么？", "Parameter Query", ["contract_only"]),
     ]
 
     for skill, query, name, keywords in test_cases:

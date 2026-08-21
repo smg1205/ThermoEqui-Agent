@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from knowledge_graph.query_engine import GraphQueryEngine
-from .skill_base import KnowledgeSkill, SkillResult
+
 from .llm_client import LLMClient
+from .skill_base import KnowledgeSkill, SkillResult
 
 
 class ModelRecommendationSkill(KnowledgeSkill):
@@ -45,7 +46,7 @@ class ModelRecommendationSkill(KnowledgeSkill):
                         answer_text = self._synthesize_with_llm(
                             query=query,
                             context=context,
-                            system_prompt="请根据检测到的任务和推荐模型，给出自然简洁的推荐理由。"
+                            system_prompt="请根据检测到的任务和推荐模型，给出自然简洁的推荐理由。",
                         )
                     return SkillResult(
                         answer=answer_text,

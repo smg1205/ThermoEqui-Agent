@@ -39,6 +39,6 @@ export function rerunTask(task: TaskManifest): Promise<CalculationEnvelope> {
   });
 }
 
-export function exportUrl(runId: string, format: "json" | "csv"): string {
+export function exportUrl(runId: string, format: "json" | "csv" | "dwsim"): string {
   return `${API_URL}/api/runs/${runId}/export?format=${format}`;
 }

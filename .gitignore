@@ -4,6 +4,7 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.pytest-tmp/
 .mypy_cache/
 .ruff_cache/
 .coverage
@@ -19,3 +20,12 @@ out/
 coverage/
 *.log
 pytest-cache-files-*/
+
+# Private ML weights: never commit trained model checkpoints.
+# Members place their own .pth files here or point PGSSI_CHECKPOINT elsewhere.
+weights/
+.pgssi-cache/
+*.pth
+*.pt
+*.ckpt
+*.safetensors

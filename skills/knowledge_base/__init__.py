@@ -1,12 +1,12 @@
 """Knowledge base skills for RAG and knowledge graph queries."""
 
-from .knowledge_qa_skill import KnowledgeQASkill
-from .model_recommendation_skill import ModelRecommendationSkill
 from .graph_query_skill import GraphQuerySkill
+from .knowledge_qa_skill import KnowledgeQASkill
+from .llm_client import LLMClient, MockLLMClient, ProjectProviderClient, get_default_llm
+from .model_recommendation_skill import ModelRecommendationSkill
 from .parameter_query_skill import ParameterQuerySkill
 from .skill_base import KnowledgeSkill, SkillResult
-from .skill_registry import SkillRegistry, Intent, DEFAULT_SKILL_REGISTRY
-from .llm_client import LLMClient, ProjectProviderClient, MockLLMClient, get_default_llm
+from .skill_registry import DEFAULT_SKILL_REGISTRY, Intent, SkillRegistry
 
 __all__ = [
     "KnowledgeQASkill",
@@ -27,6 +27,7 @@ __all__ = [
 # 简单的自测
 if __name__ == "__main__":
     import logging
+
     logging.basicConfig(level=logging.INFO)
 
     print("=" * 60)

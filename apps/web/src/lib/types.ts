@@ -18,12 +18,14 @@ export type CalculationType =
   | "tp_flash"
   | "phase_stability"
   | "azeotrope"
-  | "lle";
+  | "lle"
+  | "infinite_dilution_activity";
 
 export interface ComponentIdentity {
   component_id: string;
   name: string;
   cas_number?: string | null;
+  smiles?: string | null;
   aliases: string[];
 }
 
@@ -33,6 +35,24 @@ export interface Conditions {
   liquid_composition?: number[] | null;
   vapor_composition?: number[] | null;
   feed_composition?: number[] | null;
+  temperature_span_K?: [number, number] | null;
+}
+
+export interface ParameterSet {
+  parameter_set_id: string;
+  model_name: string;
+  component_order: string[];
+  parameters: Record<string, number>;
+  parameter_form: string;
+  units: Record<string, string>;
+  temperature_range_K?: [number, number] | null;
+  pressure_range_kPa?: [number, number] | null;
+  equilibrium_types: Array<"VLE" | "LLE" | "FLASH">;
+  source_title?: string | null;
+  source_identifier?: string | null;
+  source_type: "literature" | "database" | "user_supplied" | "test_fixture" | "estimated" | "unknown";
+  quality_level: string;
+  notes?: string | null;
 }
 
 export interface TaskManifest {
@@ -48,6 +68,7 @@ export interface TaskManifest {
   model_name?: string | null;
   points: number;
   original_question?: string | null;
+  parameters: ParameterSet[];
 }
 
 export interface EquilibriumPoint {
@@ -56,6 +77,14 @@ export interface EquilibriumPoint {
   liquid_composition: number[];
   vapor_composition: number[];
   equilibrium_residual: number;
+}
+
+export interface GammaInfinityPoint {
+  temperature_K: number;
+  solute_index: number;
+  solvent_index: number;
+  gamma_infinity: number;
+  ln_gamma_infinity: number;
 }
 
 export interface CheckResult {
@@ -99,6 +128,18 @@ export interface ScoreBreakdown {
   numerical_risk_penalty: number;
 }
 
+export interface ModelCard {
+  model_name: string;
+  family: string;
+  supported_tasks: string[];
+  excluded_systems: string[];
+  requires_binary_parameters: boolean;
+  pressure_regime: string[];
+  validation_requirements: string[];
+  implementation_status: "available" | "contract_only" | "planned";
+  production_ready: boolean;
+}
+
 export interface PhaseResult {
   phase: "liquid" | "vapor";
   fraction: number;
@@ -114,6 +155,7 @@ export interface CalculationEnvelope {
     model_name: string;
     parameter_set_id?: string | null;
     points: EquilibriumPoint[];
+    gamma_infinity: GammaInfinityPoint[];
     phases: PhaseResult[];
     temperature_K?: number | null;
     pressure_kPa?: number | null;
@@ -154,4 +196,24 @@ export interface ChatResponse {
   task?: TaskManifest | null;
   calculation?: CalculationEnvelope | null;
   request_id?: string | null;
+}
+
+export type RunStatus = "passed" | "warning" | "failed";
+
+export interface RunSummary {
+  run_id: string;
+  request_id: string;
+  task_id: string;
+  status: RunStatus;
+  calculation_type: CalculationType;
+  model_name: string;
+  backend_version: string;
+  created_at: string;
+}
+
+export interface RunListResponse {
+  items: RunSummary[];
+  total: number;
+  limit: number;
+  offset: number;
 }

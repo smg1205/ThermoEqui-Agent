@@ -12,7 +12,7 @@ import yaml
 from agent.orchestrator import ConversationOrchestrator, DeterministicProvider
 from agent.providers import DeepSeekProvider, LLMProviderError, LLMProviderOutputError
 from apps.api.main import configured_provider
-from schemas.domain import Intent, TaskManifest
+from schemas.domain import Intent, ParameterSet, TaskManifest
 
 
 @pytest.mark.asyncio
@@ -174,7 +174,189 @@ async def test_deepseek_provider_requests_json_mode_for_task_manifests() -> None
     assert '"tp_flash"' in system_prompt
     assert '"model_name"' in system_prompt
     assert "model_name may be null" in system_prompt
+    assert "Never populate the parameters field" in system_prompt
     assert "Never calculate equilibrium numbers" in system_prompt
+
+
+@pytest.mark.asyncio
+async def test_deepseek_provider_accepts_null_optional_task_manifest_fields() -> None:
+    manifest = {
+        "equilibrium_type": "FLASH",
+        "calculation_type": "TP_FLASH",
+        "components": [
+            {
+                "component_id": "methane",
+                "name": "Methane",
+                "cas_number": "74-82-8",
+                "aliases": None,
+            }
+        ],
+        "conditions": {
+            "temperature_K": 150.0,
+            "pressure_kPa": 530.0,
+            "feed_composition": [1.0],
+        },
+        "parameters": None,
+        "assumptions": None,
+        "requested_outputs": None,
+        "validation_requirements": None,
+        "composition_basis": None,
+        "points": None,
+    }
+
+    async def respond(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": json.dumps(manifest)}}]},
+        )
+
+    provider = DeepSeekProvider(
+        api_key="test-key",
+        transport=httpx.MockTransport(respond),
+    )
+
+    task = await provider.formulate_task("计算甲烷在 150 K、530 kPa 下的 TP Flash")
+
+    assert task is not None
+    assert task.parameters == []
+    assert task.assumptions == []
+    assert task.requested_outputs == ["table", "validation"]
+    assert task.validation_requirements == [
+        "composition_balance",
+        "equilibrium_residual",
+        "convergence",
+    ]
+    assert task.composition_basis == "mole_fraction"
+    assert task.points == 21
+    assert task.components[0].aliases == []
+
+
+@pytest.mark.asyncio
+async def test_deepseek_provider_accepts_fenced_task_manifest_json() -> None:
+    manifest = {
+        "equilibrium_type": "VLE",
+        "calculation_type": "BUBBLE_POINT",
+        "components": [
+            {"component_id": "methane", "name": "Methane", "cas_number": "74-82-8"},
+            {"component_id": "ethane", "name": "Ethane", "cas_number": "74-84-0"},
+        ],
+        "conditions": {
+            "pressure_kPa": 530.0,
+            "liquid_composition": [0.5, 0.5],
+        },
+    }
+
+    async def respond(_: httpx.Request) -> httpx.Response:
+        content = f"```json\n{json.dumps(manifest)}\n```"
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": content}}]},
+        )
+
+    provider = DeepSeekProvider(
+        api_key="test-key",
+        transport=httpx.MockTransport(respond),
+    )
+
+    task = await provider.formulate_task("计算甲烷和乙烷在 530 kPa 下的泡点")
+
+    assert task is not None
+    assert task.calculation_type == "bubble_point"
+    assert [component.cas_number for component in task.components] == ["74-82-8", "74-84-0"]
+
+
+@pytest.mark.asyncio
+async def test_deepseek_provider_strips_llm_supplied_parameter_sets() -> None:
+    manifest = {
+        "equilibrium_type": "FLASH",
+        "calculation_type": "TP_FLASH",
+        "components": [
+            {"component_id": "methane", "name": "Methane", "cas_number": "74-82-8"},
+            {"component_id": "ethane", "name": "Ethane", "cas_number": "74-84-0"},
+        ],
+        "conditions": {
+            "temperature_K": 150.0,
+            "pressure_kPa": 530.0,
+            "feed_composition": [0.5, 0.5],
+        },
+        "parameters": [{"model_name": "SRK", "kij": 0.0026}],
+    }
+
+    async def respond(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": json.dumps(manifest)}}]},
+        )
+
+    provider = DeepSeekProvider(
+        api_key="test-key",
+        transport=httpx.MockTransport(respond),
+    )
+
+    task = await provider.formulate_task("用 SRK 计算甲烷和乙烷的 TP Flash")
+
+    assert task is not None
+    assert task.parameters == []
+    assert any("External provider-supplied parameters were discarded" in item for item in task.assumptions)
+
+
+@pytest.mark.asyncio
+async def test_deepseek_chat_merges_repository_parameter_sets() -> None:
+    parameter_set = ParameterSet(
+        model_name="SRK",
+        component_order=["74-82-8", "74-84-0"],
+        parameters={"kij": 0.0026},
+        parameter_form="SRK kij",
+        units={"kij": "dimensionless"},
+        equilibrium_types=["VLE", "FLASH"],
+        source_type="user_supplied",
+        quality_level="test-input",
+        notes="Orchestrator integration test only; not engineering evidence.",
+    )
+    responses = [
+        "EQUILIBRIUM_CALCULATION",
+        json.dumps(
+            {
+                "equilibrium_type": "FLASH",
+                "calculation_type": "TP_FLASH",
+                "components": [
+                    {"component_id": "methane", "name": "Methane", "cas_number": "74-82-8"},
+                    {"component_id": "ethane", "name": "Ethane", "cas_number": "74-84-0"},
+                ],
+                "conditions": {
+                    "temperature_K": 150.0,
+                    "pressure_kPa": 530.0,
+                    "feed_composition": [0.8, 0.2],
+                },
+                "model_name": "SRK",
+            }
+        ),
+        json.dumps({"tool_name": "phase_equilibrium"}),
+        "确定性后端已完成计算。",
+    ]
+    request_count = 0
+
+    async def respond(_: httpx.Request) -> httpx.Response:
+        nonlocal request_count
+        content = responses[request_count]
+        request_count += 1
+        return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
+
+    provider = DeepSeekProvider(
+        api_key="test-key",
+        transport=httpx.MockTransport(respond),
+    )
+    orchestrator = ConversationOrchestrator(provider)
+
+    response = await orchestrator.chat(
+        "用 SRK 计算甲烷和乙烷在 150 K、530 kPa 下的 TP 闪蒸，进料组成 0.8/0.2",
+        parameter_sets=[parameter_set],
+    )
+
+    assert response.calculation is not None
+    assert response.task is not None
+    assert response.calculation.result.model_name == "SRK"
+    assert any(item.parameter_set_id == parameter_set.parameter_set_id for item in response.task.parameters)
 
 
 @pytest.mark.asyncio
@@ -276,8 +458,14 @@ async def test_deepseek_orchestration_rejects_invented_extra_component() -> None
         transport=httpx.MockTransport(respond),
     )
 
-    with pytest.raises(LLMProviderOutputError):
-        await ConversationOrchestrator(provider).chat("Calculate methane TP Flash at 150 K and 100 kPa.")
+    result = await ConversationOrchestrator(provider).chat("Calculate methane TP Flash at 150 K and 100 kPa.")
+
+    # The unsafe manifest is rejected and no calculation is executed: the chat
+    # returns a structured degradation response instead of raising.
+    assert result.task is None
+    assert result.calculation is None
+    assert "components inconsistent with the user message" in result.answer
+    assert result.statements and result.statements[0].category == "Warning"
 
 
 @pytest.mark.asyncio
@@ -330,8 +518,14 @@ async def test_deepseek_followup_cannot_silently_replace_inherited_components() 
     orchestrator = ConversationOrchestrator(provider)
     first = await orchestrator.chat("Calculate methane and ethane TP Flash at 150 K and 100 kPa.")
 
-    with pytest.raises(LLMProviderOutputError):
-        await orchestrator.chat("Change pressure to 200 kPa.", first.conversation_id)
+    second = await orchestrator.chat("Change pressure to 200 kPa.", first.conversation_id)
+
+    # The follow-up cannot silently replace inherited components: the change is
+    # rejected with a structured degradation response and nothing is executed.
+    assert second.task is None
+    assert second.calculation is None
+    assert "components inconsistent" in second.answer
+    assert second.statements and second.statements[0].category == "Warning"
 
 
 @pytest.mark.asyncio
@@ -364,8 +558,14 @@ async def test_deepseek_new_task_requires_component_identity_evidence() -> None:
         transport=httpx.MockTransport(respond),
     )
 
-    with pytest.raises(LLMProviderOutputError):
-        await ConversationOrchestrator(provider).chat("Calculate a TP Flash at 150 K and 100 kPa.")
+    result = await ConversationOrchestrator(provider).chat("Calculate a TP Flash at 150 K and 100 kPa.")
+
+    # A task with no independently resolvable component identity is rejected
+    # with a structured degradation response, not executed.
+    assert result.task is None
+    assert result.calculation is None
+    assert "No component identity could be resolved" in result.answer
+    assert result.statements and result.statements[0].category == "Warning"
 
 
 @pytest.mark.asyncio
@@ -398,8 +598,14 @@ async def test_deepseek_component_name_cannot_carry_another_compounds_cas() -> N
         transport=httpx.MockTransport(respond),
     )
 
-    with pytest.raises(LLMProviderOutputError):
-        await ConversationOrchestrator(provider).chat("Calculate the acetone bubble point at 101.325 kPa.")
+    result = await ConversationOrchestrator(provider).chat("Calculate the acetone bubble point at 101.325 kPa.")
+
+    # A component name carrying another compound's CAS is rejected with a
+    # structured degradation response, not executed.
+    assert result.task is None
+    assert result.calculation is None
+    assert "component name/CAS mismatch" in result.answer
+    assert result.statements and result.statements[0].category == "Warning"
 
 
 @pytest.mark.asyncio
@@ -432,8 +638,16 @@ async def test_deepseek_cannot_omit_external_component_from_mixed_system() -> No
         transport=httpx.MockTransport(respond),
     )
 
-    with pytest.raises(LLMProviderOutputError):
-        await ConversationOrchestrator(provider).chat("Calculate the acetone and benzene bubble point at 101.325 kPa.")
+    result = await ConversationOrchestrator(provider).chat(
+        "Calculate the acetone and benzene bubble point at 101.325 kPa."
+    )
+
+    # Omitting a component from a mixed system is rejected with a structured
+    # degradation response, not executed.
+    assert result.task is None
+    assert result.calculation is None
+    assert "components inconsistent with the user message" in result.answer
+    assert result.statements and result.statements[0].category == "Warning"
 
 
 @pytest.mark.asyncio
@@ -490,8 +704,14 @@ async def test_deepseek_requires_clarification_for_ambiguous_component_role(mess
         transport=httpx.MockTransport(respond),
     )
 
-    with pytest.raises(LLMProviderOutputError):
-        await ConversationOrchestrator(provider).chat(message)
+    result = await ConversationOrchestrator(provider).chat(message)
+
+    # Ambiguous component roles require clarification: the task is rejected
+    # with a structured degradation response and nothing is executed.
+    assert result.task is None
+    assert result.calculation is None
+    assert "ambiguous" in result.answer.casefold() or "clarification" in result.answer.casefold()
+    assert result.statements and result.statements[0].category == "Warning"
 
 
 @pytest.mark.asyncio

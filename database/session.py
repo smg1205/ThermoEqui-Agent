@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from pathlib import Path
+from tempfile import gettempdir
 from uuid import uuid4
 
+from dotenv import load_dotenv
 from sqlalchemy import Engine, create_engine, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -25,12 +28,24 @@ from database.models import (
 from schemas.domain import CalculationEnvelope, ParameterSet, RunRecord, RunStatus, RunSummary
 
 
+def _default_database_url() -> str:
+    local_app_data = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
+    database_path = local_app_data / "ThermoEqui-Agent" / "thermoequi.db"
+    try:
+        database_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        database_path = Path(gettempdir()) / "ThermoEqui-Agent" / "thermoequi.db"
+        database_path.parent.mkdir(parents=True, exist_ok=True)
+    return f"sqlite:///{database_path.as_posix()}"
+
+
 def create_database_engine(url: str | None = None) -> Engine:
-    database_url: str = url if url is not None else (os.environ.get("DATABASE_URL") or "sqlite:///./thermoequi.db")
+    database_url: str = url if url is not None else (os.environ.get("DATABASE_URL") or _default_database_url())
     arguments = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
     return create_engine(database_url, connect_args=arguments)
 
 
+load_dotenv()
 engine = create_database_engine()
 
 
@@ -272,6 +287,53 @@ class Repository:
                 raise ParameterSetConflictError(
                     f"Parameter set {parameter_set.parameter_set_id} already exists"
                 ) from None
+
+    def upsert_parameter_set(self, parameter_set: ParameterSet) -> str:
+        """Insert or refresh one production parameter set; returns added/updated/unchanged."""
+        if parameter_set.source_type == "test_fixture":
+            raise ValueError("test_fixture parameter sets cannot enter the production database")
+        payload = parameter_set.model_dump(mode="json")
+        with Session(self.engine) as session:
+            row = session.get(ParameterSetRow, parameter_set.parameter_set_id)
+            if row is None:
+                session.add(
+                    ParameterSetRow(
+                        id=parameter_set.parameter_set_id,
+                        model_name=parameter_set.model_name,
+                        component_key="|".join(parameter_set.component_order),
+                        payload=payload,
+                        source_type=parameter_set.source_type,
+                    )
+                )
+                session.commit()
+                return "added"
+            if row.payload == payload:
+                return "unchanged"
+            row.model_name = parameter_set.model_name
+            row.component_key = "|".join(parameter_set.component_order)
+            row.payload = payload
+            row.source_type = parameter_set.source_type
+            session.commit()
+            return "updated"
+
+    def delete_duplicate_parameter_sets(self, production_sets: list[ParameterSet]) -> int:
+        """Remove non-production rows that duplicate a production model/component pair."""
+        removed = 0
+        with Session(self.engine) as session:
+            for parameter_set in production_sets:
+                component_key = "|".join(parameter_set.component_order)
+                rows = session.scalars(
+                    select(ParameterSetRow).where(
+                        ParameterSetRow.model_name == parameter_set.model_name,
+                        ParameterSetRow.component_key == component_key,
+                        ParameterSetRow.id != parameter_set.parameter_set_id,
+                    )
+                ).all()
+                for row in rows:
+                    session.delete(row)
+                    removed += 1
+            session.commit()
+        return removed
 
     def search_parameter_sets(self, model_name: str | None, components: list[str]) -> list[ParameterSet]:
         with Session(self.engine) as session:

@@ -181,8 +181,10 @@ def resolve_external_component(identifier: str) -> ComponentIdentity | None:
         return None
     cas_number = str(constants.CASs[0])
     name = str(constants.names[0]).title()
+    is_cas_format = bool(re.match(r"^\d+-\d+-\d+$", identifier))
+    component_id = identifier if not is_cas_format else cas_number
     return ComponentIdentity(
-        component_id=cas_number,
+        component_id=component_id,
         name=name,
         cas_number=cas_number,
         aliases=[identifier],
@@ -246,8 +248,22 @@ def _has_chinese_chemical_role_evidence(message: str, start: int, end: int) -> b
     if suffix and suffix[0] in separators:
         return True
     chemical_keywords = (
-        "体系", "物系", "溶液", "混合物", "平衡", "相", "气液", "液液",
-        "计算", "模拟", "闪蒸", "泡点", "露点", "曲线", "组成", "浓度",
+        "体系",
+        "物系",
+        "溶液",
+        "混合物",
+        "平衡",
+        "相",
+        "气液",
+        "液液",
+        "计算",
+        "模拟",
+        "闪蒸",
+        "泡点",
+        "露点",
+        "曲线",
+        "组成",
+        "浓度",
     )
     combined = prefix + suffix
     for kw in chemical_keywords:
@@ -274,9 +290,10 @@ def has_chemical_role_evidence(message: str, start: int, end: int) -> bool:
         prefix,
     )
     after = re.match(
-        r"\s*(?:and\b|with\b|at\b|(?:tp\s*)?flash\b|bubble\b|dew\b|vle\b|"
-        r"azeotrope\b|equilibrium\b|composition\b|t-x-y\b|p-x-y\b|"
+        r"\s*(?:and\b|with\b|at\b|in\b|(?:tp\s*)?flash\b|bubble\b|dew\b|vle\b|"
+        r"azeotrope\b|equilibrium\b|composition\b|t-x-y|p-x-y|"
         r"和|与|、|在|的|常压|汽液|液液|泡点|露点|相平衡|曲线|闪蒸|"
+        r"体系|物系|混合物|系统|组分|中|里|内|"
         r"[-/—+]|[)）]|及)",
         suffix,
     )

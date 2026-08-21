@@ -1,10 +1,15 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import rehypeKatex from "rehype-katex";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import { exportUrl, rerunTask, sendChat } from "@/lib/api";
 import type { AgentStep, CalculationEnvelope, ChatResponse, TaskManifest } from "@/lib/types";
 import { AgentRuntime } from "./AgentRuntime";
 import { FlashResultCard } from "./FlashResultCard";
+import { GammaChart } from "./GammaChart";
 import { ScientificValidationCard } from "./ScientificValidationCard";
 import { VleChart } from "./VleChart";
 
@@ -177,30 +182,6 @@ export function Workbench() {
       </header>
 
       <section className="top-workspace">
-        <aside className="sidebar">
-          <div className="sidebar-section-title">
-            <p className="eyebrow">AI Chemistry Tasks</p>
-            <h2>任务模板</h2>
-          </div>
-          <div className="task-template-grid">
-            {examples.map((example) => (
-              <button key={example.code} className="task-template-card" onClick={() => setInput(example.prompt)}>
-                <div className="task-template-topline">
-                  <span>{example.code}</span>
-                  <small>{example.tag}</small>
-                </div>
-                <strong>{example.title}</strong>
-                <p>{example.prompt}</p>
-              </button>
-            ))}
-          </div>
-          <div className="scope-card">
-            <p className="eyebrow">当前边界</p>
-            <strong>非电解质分子体系</strong>
-            <small>VLE / Flash / 泡露点 / 共沸搜索</small>
-          </div>
-        </aside>
-
         <div className="center-column">
           <section className="conversation">
             <div className="section-heading">
@@ -213,15 +194,27 @@ export function Workbench() {
             <div className="conversation-body">
               <div className="messages" aria-live="polite">
                 {messages.map((message, index) => (
-                  <article className={message.role} key={`${message.role}-${index}`}>
-                    <label>{message.role === "agent" ? "AGENT" : "YOU"}</label>
-                    <p>{message.text}</p>
+                  <article className={`message-row ${message.role}`} key={`${message.role}-${index}`}>
+                    <div className="message-bubble">
+                      <label>{message.role === "agent" ? "AGENT" : "YOU"}</label>
+                      <div className="message-markdown">
+                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                          {message.text}
+                        </ReactMarkdown>
+                      </div>
+                    </div>
                   </article>
                 ))}
                 {loading && (
-                  <article className="agent">
-                    <label>ENGINE</label>
-                    <p>正在理解任务、调度模型、调用热力学计算并执行验证...</p>
+                  <article className="message-row agent">
+                    <div className="message-bubble">
+                      <label>ENGINE</label>
+                      <div className="message-markdown">
+                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                          {"正在理解任务、调度模型、调用热力学计算并执行验证..."}
+                        </ReactMarkdown>
+                      </div>
+                    </div>
                   </article>
                 )}
               </div>
@@ -254,13 +247,29 @@ export function Workbench() {
                 <div className="results-actions">
                   <a href={exportUrl(calculation.result.run_id, "json")}>下载 JSON</a>
                   <a href={exportUrl(calculation.result.run_id, "csv")}>下载 CSV</a>
+                  <a href={exportUrl(calculation.result.run_id, "dwsim")}>下载 DWSIM</a>
                 </div>
               )}
             </div>
 
             <div className="results-stack">
               {calculation && <ScientificValidationCard calculation={calculation} />}
-              {calculation && !isFlashResult && (
+              {calculation && !isFlashResult && calculation.result.gamma_infinity.length > 0 && (
+                <section className="result-panel chart-panel">
+                  <div className="panel-heading">
+                    <h3>γ∞-T 曲线</h3>
+                    <span>{calculation.result.model_name}</span>
+                  </div>
+                  <GammaChart
+                    points={calculation.result.gamma_infinity}
+                    model={calculation.result.model_name}
+                    components={calculation.result.input_snapshot?.components as
+                      | { name?: string }[]
+                      | undefined}
+                  />
+                </section>
+              )}
+              {calculation && !isFlashResult && calculation.result.gamma_infinity.length === 0 && (
                 <section className="result-panel chart-panel">
                   <div className="panel-heading">
                     <h3>相平衡图</h3>
@@ -303,28 +312,59 @@ export function Workbench() {
                     <h3>数据表</h3>
                   </div>
                   <div className="table-wrap">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>T / K</th>
-                          <th>P / kPa</th>
-                          <th>x1</th>
-                          <th>y1</th>
-                          <th>残差</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {calculation.result.points.map((point, index) => (
-                          <tr key={index}>
-                            <td>{point.temperature_K.toFixed(4)}</td>
-                            <td>{point.pressure_kPa.toFixed(3)}</td>
-                            <td>{point.liquid_composition[0].toFixed(5)}</td>
-                            <td>{point.vapor_composition[0].toFixed(5)}</td>
-                            <td>{point.equilibrium_residual.toExponential(2)}</td>
+                    {calculation.result.gamma_infinity.length > 0 ? (
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>T / K</th>
+                            <th>溶质 → 溶剂</th>
+                            <th>γ∞</th>
+                            <th>ln γ∞</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {calculation.result.gamma_infinity.map((point, index) => {
+                            const components = calculation.result.input_snapshot?.components as
+                              | Array<{ name?: string }>
+                              | undefined;
+                            return (
+                              <tr key={index}>
+                                <td>{point.temperature_K.toFixed(2)}</td>
+                                <td>
+                                  {components?.[point.solute_index]?.name ?? point.solute_index} →{" "}
+                                  {components?.[point.solvent_index]?.name ?? point.solvent_index}
+                                </td>
+                                <td>{point.gamma_infinity.toFixed(4)}</td>
+                                <td>{point.ln_gamma_infinity.toFixed(4)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>T / K</th>
+                            <th>P / kPa</th>
+                            <th>x1</th>
+                            <th>y1</th>
+                            <th>残差</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {calculation.result.points.map((point, index) => (
+                            <tr key={index}>
+                              <td>{point.temperature_K.toFixed(4)}</td>
+                              <td>{point.pressure_kPa.toFixed(3)}</td>
+                              <td>{point.liquid_composition[0].toFixed(5)}</td>
+                              <td>{point.vapor_composition[0].toFixed(5)}</td>
+                              <td>{point.equilibrium_residual.toExponential(2)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
                   </div>
                 </section>
               )}
