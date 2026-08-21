@@ -197,7 +197,7 @@ def test_unsupported_equilibrium_type_is_rejected() -> None:
 def test_filter_applicable_models_returns_all_catalog_entries() -> None:
     results = _result_by_name(ModelApplicabilityRequest(task=_task()))
 
-    assert len(results) == 11
+    assert len(results) == 12
     assert set(results) == {
         "Ideal/Raoult",
         "Peng-Robinson",
@@ -210,6 +210,7 @@ def test_filter_applicable_models_returns_all_catalog_entries() -> None:
         "NRTL",
         "UNIQUAC",
         "PGSSI",
+        "GHGEAT",
     }
 
 

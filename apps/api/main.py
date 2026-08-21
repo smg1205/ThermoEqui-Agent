@@ -385,6 +385,25 @@ def infinite_dilution_activity(task: TaskManifest, request: Request) -> Calculat
         request.state.request_id,
     )
 
+@app.post("/api/calculations/infinite-dilution-activity-ghgeat", response_model=CalculationEnvelope)
+def infinite_dilution_activity_ghgeat(task: TaskManifest, request: Request) -> CalculationEnvelope:
+    """GHGEAT infinite-dilution activity coefficient prediction.
+
+    The first component is the solute and the second the solvent.  Requires the
+    GHGEAT checkpoint (GHGEAT_CHECKPOINT), the GHGEAT source tree (GHGEAT_SRC), and
+    SMILES on every component.
+    """
+    return execute(
+        task.model_copy(
+            update={
+                "calculation_type": "infinite_dilution_activity",
+                "equilibrium_type": "VLE",
+                "model_name": "GHGEAT",
+            }
+        ),
+        request.state.request_id,
+    )
+
 
 @app.post("/api/validation", response_model=ValidationReport)
 def validation(result: CalculationResult) -> ValidationReport:

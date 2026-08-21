@@ -19,13 +19,14 @@ EXPECTED_NAMES = {
     "NRTL",
     "UNIQUAC",
     "PGSSI",
+    "GHGEAT",
 }
 
 
 def test_real_model_catalog_yaml_files_all_load() -> None:
     catalog = load_model_catalog()
 
-    assert len(catalog) == 11
+    assert len(catalog) == 12
     assert set(catalog) == EXPECTED_NAMES
 
 
