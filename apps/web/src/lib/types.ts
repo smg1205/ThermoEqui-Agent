@@ -7,6 +7,7 @@ export type Intent =
   | "RESULT_INTERPRETATION"
   | "SENSITIVITY_ANALYSIS"
   | "PROCESS_RECOMMENDATION"
+  | "FLOW_DESIGN_QA"
   | "TASK_CORRECTION"
   | "UNSUPPORTED_TASK";
 
@@ -187,6 +188,64 @@ export interface AgentStep {
   tool_name?: string | null;
 }
 
+// —— Process flow design (Skill / FlowDesignDraft) ——
+// See schemas/domain.py FlowDesignDraft for the Python source of truth.
+
+export type FlowParameterSource = "LLM_SUGGESTED" | "RULE_SUGGESTED" | "VALIDATED";
+
+export type UnitOperationType =
+  | "preheater"
+  | "distillation_column"
+  | "flash_drum"
+  | "condenser"
+  | "reboiler"
+  | "heat_exchanger"
+  | "mixer"
+  | "splitter";
+
+export interface FlowParameter {
+  value: number | string;
+  source: FlowParameterSource;
+  needs_validation?: boolean;
+  note?: string | null;
+}
+
+export interface FlowFeed {
+  components: string[];
+  composition_mole?: number[];
+  temperature_K?: number | null;
+  pressure_kPa?: number | null;
+  flow_rate_mol_s?: number | null;
+  assumption?: string | null;
+}
+
+export interface FlowUnitOperation {
+  id: string;
+  type: UnitOperationType;
+  name: string;
+  input_stream?: string | null;
+  output_streams?: Record<string, string>;
+  conditions?: Record<string, FlowParameter>;
+}
+
+export interface FlowProductSpec {
+  stream: string;
+  spec: string;
+}
+
+export interface FlowDesignDraft {
+  flow_name: string;
+  flow_type?: string;
+  feed: FlowFeed;
+  unit_operations: FlowUnitOperation[];
+  streams_connectivity_note?: string | null;
+  thermodynamic_model?: string | null;
+  model_recommendation_note?: string | null;
+  product_specs?: FlowProductSpec[];
+  assumptions?: string[];
+  notes?: string[];
+}
+
 export interface ChatResponse {
   conversation_id: string;
   intent: Intent;
@@ -195,6 +254,7 @@ export interface ChatResponse {
   execution_steps: AgentStep[];
   task?: TaskManifest | null;
   calculation?: CalculationEnvelope | null;
+  flow_design?: FlowDesignDraft | null;
   request_id?: string | null;
 }
 

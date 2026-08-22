@@ -9,7 +9,7 @@ from uuid import uuid4
 from agent.graph_workflow import BoundedAgentGraph
 from agent.memory_integration import retrieve_for_calculation, retrieve_for_concept_qa, save_turn
 from agent.providers import LLMProvider, LLMProviderError, LLMProviderOutputError
-from agent.skill_integration import answer_with_skills
+from agent.skill_integration import answer_with_skill_payload
 from agent.tools import DEFAULT_TOOL_REGISTRY, EngineeringToolRegistry
 from schemas.domain import (
     AgentStep,
@@ -332,12 +332,9 @@ def _has_positive_scope_marker(message: str, markers: tuple[str, ...]) -> bool:
     # Verbs that can form a request when combined with topic keywords
     _REQUEST_VERBS_ALONE = re.compile(r"(?:设计|模拟|优化|搭建|建立|开发|计算)")
     # Additional unsupported topic keywords that can appear in flexible word order
-    _FLEXIBLE_EXCLUDED_TOPICS = (
-        "精馏塔",
-        "流程",
-        "塔设计",
-        "精馏设计",
-    )
+    # 注意："流程"不再进入此列表，因为 FLOW_DESIGN_QA 现在是支持的意图。
+    # 此处仅保留 v0.1 明确排除的多单元/超范围设计词。
+    _FLEXIBLE_EXCLUDED_TOPICS: tuple[str, ...] = ()
     for marker in markers:
         escaped = re.escape(marker.casefold())
         for match in re.finditer(escaped, lower):
@@ -551,19 +548,8 @@ class DeterministicProvider:
             "多晶",
             "polymorph",
             "复杂临界",
-            "流程设计",
-            "流程模拟",
-            "流程优化",
-            "flowsheet",
-            "flowsheet design",
-            "process flowsheet design",
-            "design a flowsheet",
-            "design the flowsheet",
-            "design process",
             "liquefaction",
             "lng流程",
-            "精馏塔设计",
-            "full column design",
             "反应相平衡",
             "reactive equilibrium",
         )
@@ -572,6 +558,41 @@ class DeterministicProvider:
         )
         if _has_positive_scope_marker(lower, excluded_markers) or resolved_electrolyte:
             return Intent.UNSUPPORTED_TASK
+        # 第二层防护：即使 _has_positive_scope_marker 放过，若 excluded_markers（例如"聚合物""SLE""电解质"）
+        # 与请求动词（帮我/请/设计/模拟 等）同时出现，仍视为超范围请求。
+        _REQUEST_VERBS_FOR_EXCLUSION = re.compile(
+            r"(?:请|帮我|请帮我|如何|怎么|怎样|想|需要|帮|求|麻烦|是否|能不能|能否|可否)"
+        )
+        _DESIGN_ACTION_FOR_EXCLUSION = re.compile(r"(?:设计|模拟|优化|搭建|建立|开发|计算)")
+        if _REQUEST_VERBS_FOR_EXCLUSION.search(lower) or _DESIGN_ACTION_FOR_EXCLUSION.search(lower):
+            _DOMAIN_EXCLUDE_TOPICS = (
+                "电解质",
+                "离子体系",
+                "nacl",
+                "salt",
+                "brine",
+                "sodium chloride",
+                "saltwater",
+                "ionic mixture",
+                "sle",
+                "固液",
+                "vlle",
+                "v lle",
+                "聚合物",
+                "polymer",
+                "水合物",
+                "hydrate",
+                "假组分",
+                "pseudocomponent",
+                "多晶",
+                "polymorph",
+                "反应相平衡",
+                "reactive equilibrium",
+                "liquefaction",
+                "液化",
+            )
+            if any(topic in lower for topic in _DOMAIN_EXCLUDE_TOPICS):
+                return Intent.UNSUPPORTED_TASK
         _TASK_CORRECTION_STRONG = (
             "改为",
             "改成",
@@ -647,6 +668,24 @@ class DeterministicProvider:
             return Intent.SENSITIVITY_ANALYSIS
         if any(word in lower for word in ("工艺建议", "流程建议", "process recommendation")):
             return Intent.PROCESS_RECOMMENDATION
+        if any(
+            phrase in lower
+            for phrase in (
+                "设计流程",
+                "流程设计",
+                "设计一条",
+                "分离流程",
+                "回收流程",
+                "提纯流程",
+                "工艺流程",
+                "design flow",
+                "design process",
+                "design a flow",
+                "需要几个塔",
+                "几塔流程",
+            )
+        ):
+            return Intent.FLOW_DESIGN_QA
         if any(word in lower for word in ("查询数据", "获取数据", "查数据", "database", "data query")):
             return Intent.DATA_QUERY
         if any(word in lower for word in ("参数", "parameter")):
@@ -1094,31 +1133,48 @@ class ConversationOrchestrator:
             Intent.DATA_QUERY,
             Intent.PROCESS_RECOMMENDATION,
             Intent.RESULT_INTERPRETATION,
+            Intent.FLOW_DESIGN_QA,
         }:
             # Retrieve conversation memory and inject as context prefix
             memory_prefix, grounded_numbers = retrieve_for_concept_qa(conversation_id, message)
             effective_message = f"{memory_prefix}{message}" if memory_prefix else message
             strict = intent in {Intent.PARAMETER_QUERY, Intent.DATA_QUERY}
-            try:
-                statements = await self.provider.answer_with_evidence(
-                    effective_message,
-                    strict=strict,
-                    grounded_numbers=grounded_numbers,
-                    intent_label=intent.value,
-                )
-            except (LLMProviderError, LLMProviderOutputError):
-                statements = answer_with_skills(effective_message, intent)
-                if not statements:
-                    statements = [
-                        EvidenceStatement(
-                            category="Warning",
-                            text="外部模型暂时不可用；请稍后重试或改用确定性计算接口。",
-                        )
-                    ]
+            statements: list[EvidenceStatement] = []
+            # For FLOW_DESIGN_QA, prefer the dedicated skill which produces
+            # a well-typed FlowDesignDraft over generic LLM free text. The
+            # structured draft is carried on ChatResponse.flow_design so the
+            # frontend and downstream exporters do not need to parse prose.
+            flow_design_payload = None
+            if intent == Intent.FLOW_DESIGN_QA:
+                skill_answer = answer_with_skill_payload(effective_message, intent)
+                statements = skill_answer.statements
+                flow_design_payload = skill_answer.flow_design
+            if not statements:
+                try:
+                    statements = await self.provider.answer_with_evidence(
+                        effective_message,
+                        strict=strict,
+                        grounded_numbers=grounded_numbers,
+                        intent_label=intent.value,
+                    )
+                except (LLMProviderError, LLMProviderOutputError):
+                    fallback_answer = answer_with_skill_payload(effective_message, intent)
+                    statements = fallback_answer.statements
+                    if fallback_answer.flow_design and flow_design_payload is None:
+                        flow_design_payload = fallback_answer.flow_design
+                    if not statements:
+                        statements = [
+                            EvidenceStatement(
+                                category="Warning",
+                                text="外部模型暂时不可用；请稍后重试或改用确定性计算接口。",
+                            )
+                        ]
             if not statements or statements[0].category == "Warning":
-                skill_statements = answer_with_skills(effective_message, intent)
-                if skill_statements:
-                    statements = skill_statements
+                fallback_answer = answer_with_skill_payload(effective_message, intent)
+                if fallback_answer.statements:
+                    statements = fallback_answer.statements
+                    if fallback_answer.flow_design and flow_design_payload is None:
+                        flow_design_payload = fallback_answer.flow_design
             answer_text = "\n".join(item.text for item in statements)
             # Save this turn to conversation memory
             save_turn(conversation_id, message, answer_text, intent)
@@ -1127,6 +1183,7 @@ class ConversationOrchestrator:
                 intent=intent,
                 answer=answer_text,
                 statements=statements,
+                flow_design=flow_design_payload,
             )
         task = None
         try:
@@ -1277,12 +1334,23 @@ class ConversationOrchestrator:
             Intent.RESULT_INTERPRETATION,
             Intent.DATA_QUERY,
             Intent.PARAMETER_QUERY,
+            Intent.FLOW_DESIGN_QA,
         }
         if (
             provider_intent in _SPECIALIZED_INTENTS_REQUIRING_TRIGGER
             and deterministic_intent not in _SPECIALIZED_INTENTS_REQUIRING_TRIGGER
             and deterministic_intent != Intent.UNSUPPORTED_TASK
         ):
+            return deterministic_intent
+        # Conversely: if the deterministic classifier fired a specialized intent
+        # (trigger keywords like 流程设计/敏感性/参数查询 were explicitly
+        # detected in the message) while the LLM collapsed it into a generic
+        # CONCEPT_QA or MODEL_SELECTION_QA, trust the keyword-based result so
+        # the matching skill (e.g. ProcessFlowDesignSkill) takes priority.
+        if deterministic_intent in _SPECIALIZED_INTENTS_REQUIRING_TRIGGER and provider_intent in {
+            Intent.CONCEPT_QA,
+            Intent.MODEL_SELECTION_QA,
+        }:
             return deterministic_intent
         if provider_intent == Intent.UNSUPPORTED_TASK and deterministic_intent in {
             Intent.CONCEPT_QA,
@@ -1291,6 +1359,7 @@ class ConversationOrchestrator:
             Intent.DATA_QUERY,
             Intent.RESULT_INTERPRETATION,
             Intent.PROCESS_RECOMMENDATION,
+            Intent.FLOW_DESIGN_QA,
         }:
             return deterministic_intent
         return provider_intent
