@@ -422,6 +422,7 @@ class ConstrainedLLMProvider:
             "RESULT_INTERPRETATION",
             "PROCESS_RECOMMENDATION",
             "SENSITIVITY_ANALYSIS",
+            "FLOW_DESIGN_QA",
         }
         if intent_label and intent_label.upper() in strict_calc_intents:
             check_numbers = True
@@ -572,6 +573,7 @@ class DeepSeekProvider(ConstrainedLLMProvider):
             "RESULT_INTERPRETATION",
             "PROCESS_RECOMMENDATION",
             "SENSITIVITY_ANALYSIS",
+            "FLOW_DESIGN_QA",
         }
         if intent_label and intent_label.upper() in strict_calc_intents:
             check_numbers = True

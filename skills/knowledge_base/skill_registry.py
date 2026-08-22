@@ -8,6 +8,7 @@ from .graph_query_skill import GraphQuerySkill
 from .knowledge_qa_skill import KnowledgeQASkill
 from .model_recommendation_skill import ModelRecommendationSkill
 from .parameter_query_skill import ParameterQuerySkill
+from .process_flow_design_skill import ProcessFlowDesignSkill
 from .skill_base import KnowledgeSkill, SkillResult
 
 
@@ -50,3 +51,4 @@ DEFAULT_SKILL_REGISTRY.register(KnowledgeQASkill())
 DEFAULT_SKILL_REGISTRY.register(ModelRecommendationSkill())
 DEFAULT_SKILL_REGISTRY.register(GraphQuerySkill())
 DEFAULT_SKILL_REGISTRY.register(ParameterQuerySkill())
+DEFAULT_SKILL_REGISTRY.register(ProcessFlowDesignSkill())

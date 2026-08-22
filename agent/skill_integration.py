@@ -6,8 +6,9 @@ from __future__ import annotations
 
 import logging
 import threading
+from dataclasses import dataclass
 
-from schemas.domain import EvidenceStatement, Intent
+from schemas.domain import EvidenceStatement, FlowDesignDraft, Intent
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,31 @@ _THERMO_KEYWORDS = (
     "气液",
     "液液",
     "vle",
+    "分离流程",
+    "精馏塔",
+    "精馏",
+    "流程设计",
+    "工艺流",
+    "提纯流程",
+    "分离方法",
+    "需要几个塔",
+    "单元操作",
+    "进料预热器",
+    "塔顶冷凝",
+    "塔顶冷凝器",
+    "塔釜再沸",
+    "乙醇",
+    "甲醇",
+    "水",
+    "苯",
+    "甲苯",
+    "丙酮",
+    "乙苯",
+    "异丙醇",
+    "乙酸",
+    "泡点",
+    "露点",
+    "vle",
     "lle",
     "flash",
     "泡点",
@@ -163,9 +189,40 @@ def _kb_answer_is_relevant(answer: str) -> bool:
     return True
 
 
-def answer_with_skills(question: str, intent: Intent) -> list[EvidenceStatement]:
+@dataclass(frozen=True)
+class SkillAnswer:
+    """Result produced by a knowledge-skill invocation.
+
+    ``statements`` is rendered for direct human consumption. When the skill
+    emitted a structured flow-design draft (``flow_design``), callers should
+    attach it to the outer response so downstream exporters (DWSIM etc.) can
+    consume a well-typed schema instead of re-parsing free text.
+    """
+
+    statements: list[EvidenceStatement]
+    flow_design: FlowDesignDraft | None = None
+
+
+def _extract_flow_design(result: object) -> FlowDesignDraft | None:
+    """Best-effort extraction of FlowDesignDraft out of a skill's metadata dict."""
+    metadata = getattr(result, "metadata", None)
+    if not isinstance(metadata, dict):
+        return None
+    payload = metadata.get("flow_design_json")
+    if payload is None:
+        return None
+    try:
+        if isinstance(payload, FlowDesignDraft):
+            return payload
+        return FlowDesignDraft.model_validate(payload)
+    except Exception:
+        logger.warning("skill returned invalid flow_design_json; dropped from response")
+        return None
+
+
+def answer_with_skill_payload(question: str, intent: Intent) -> SkillAnswer:
     if not _question_is_thermo_related(question):
-        return []
+        return SkillAnswer(statements=[])
 
     registry = get_skill_registry()
     intent_to_skill = {
@@ -174,8 +231,10 @@ def answer_with_skills(question: str, intent: Intent) -> list[EvidenceStatement]
         Intent.PARAMETER_QUERY: ("parameter_query", "参数查询"),
         Intent.DATA_QUERY: ("knowledge_qa", "数据查询"),
         Intent.RESULT_INTERPRETATION: ("knowledge_qa", "结果解读"),
+        Intent.FLOW_DESIGN_QA: ("process_flow_design", "流程设计"),
     }
     skill_name, label = intent_to_skill.get(intent, ("knowledge_qa", "知识问答"))
+    flow_design: FlowDesignDraft | None = None
     try:
         result = registry.execute_skill(skill_name, question)
         if result and result.answer and result.confidence >= 0.6 and _kb_answer_is_relevant(result.answer):
@@ -183,14 +242,28 @@ def answer_with_skills(question: str, intent: Intent) -> list[EvidenceStatement]
             if result.sources:
                 sources = "\u3001".join(result.sources[:3])
                 text += f"\n\n[\u6765\u6e90: {sources}]"
-            return [EvidenceStatement(category="Knowledge", text=text)]
+            flow_design = _extract_flow_design(result)
+            return SkillAnswer(
+                statements=[EvidenceStatement(category="Knowledge", text=text)],
+                flow_design=flow_design,
+            )
     except Exception:
         pass
     if skill_name != "model_recommendation":
         try:
             result = registry.execute_skill("model_recommendation", question)
             if result and result.answer and result.confidence >= 0.6 and _kb_answer_is_relevant(result.answer):
-                return [EvidenceStatement(category="Knowledge", text=result.answer)]
+                return SkillAnswer(statements=[EvidenceStatement(category="Knowledge", text=result.answer)])
         except Exception:
             pass
-    return []
+    return SkillAnswer(statements=[])
+
+
+def answer_with_skills(question: str, intent: Intent) -> list[EvidenceStatement]:
+    """Backwards-compatible wrapper around :func:`answer_with_skill_payload`.
+
+    Preserves the legacy ``list[EvidenceStatement]`` return type for existing
+    call sites that do not yet consume :class:`SkillAnswer.flow_design`.
+    """
+    return answer_with_skill_payload(question, intent).statements
+
