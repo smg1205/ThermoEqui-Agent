@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { VleChart } from "./VleChart";
 
 interface PlotProps {
-  data: Array<{ y: number[] }>;
+  data: Array<{ y: number[]; name?: string }>;
   layout: { yaxis: { title: { text: string } }; height: number };
 }
 
@@ -24,5 +24,27 @@ describe("VleChart", () => {
     expect(props.data[0].y).toEqual([150, 100]);
     expect(props.layout.yaxis.title.text).toBe("压力 / kPa");
     expect(props.layout.height).toBe(448);
+  });
+
+  it("renders liquid and vapor traces per model when series is provided", () => {
+    render(
+      <VleChart
+        series={[
+          { model_name: "NRTL", points },
+          { model_name: "UNIQUAC", points },
+        ]}
+        temperature={350}
+        calculationType="isothermal_vle"
+      />,
+    );
+    const props = JSON.parse(screen.getByTestId("plot-props").textContent ?? "{}") as PlotProps;
+    expect(props.data).toHaveLength(4);
+    expect(props.data.map((trace) => trace.name)).toEqual([
+      "NRTL liquid",
+      "NRTL vapor",
+      "UNIQUAC liquid",
+      "UNIQUAC vapor",
+    ]);
+    expect(props.data[0].y).toEqual([150, 100]);
   });
 });

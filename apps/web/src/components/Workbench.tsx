@@ -5,8 +5,15 @@ import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import { exportUrl, rerunTask, sendChat } from "@/lib/api";
-import type { AgentStep, CalculationEnvelope, ChatResponse, TaskManifest } from "@/lib/types";
+import { compareModels, exportUrl, rerunTask, sendChat } from "@/lib/api";
+import type {
+  AgentStep,
+  CalculationEnvelope,
+  ChatResponse,
+  ModelComparisonEntry,
+  ModelComparisonResponse,
+  TaskManifest,
+} from "@/lib/types";
 import { AgentRuntime } from "./AgentRuntime";
 import { FlashResultCard } from "./FlashResultCard";
 import { GammaChart } from "./GammaChart";
@@ -43,6 +50,12 @@ function modelStatusLabel(executable: boolean): string {
   return executable ? "模型可用" : "模型不可用";
 }
 
+function comparisonEntryStatus(entry: ModelComparisonEntry): string {
+  if (entry.failure) return "失败";
+  if (!entry.validation) return "未验证";
+  return entry.validation.overall_status;
+}
+
 export function Workbench() {
   const [messages, setMessages] = useState<Array<{ role: "user" | "agent"; text: string }>>([
     {
@@ -54,6 +67,7 @@ export function Workbench() {
   const [conversationId, setConversationId] = useState<string>();
   const [task, setTask] = useState<TaskManifest>();
   const [calculation, setCalculation] = useState<CalculationEnvelope>();
+  const [comparison, setComparison] = useState<ModelComparisonResponse>();
   const [runs, setRuns] = useState<CalculationEnvelope[]>([]);
   const [executionSteps, setExecutionSteps] = useState<AgentStep[]>([]);
   const [activeTab, setActiveTab] = useState<DetailTab>("table");
@@ -80,6 +94,7 @@ export function Workbench() {
     setMessages((current) => [...current, { role: "user", text: message }]);
     setLoading(true);
     setDiagnostic(undefined);
+    setComparison(undefined);
     try {
       const response: ChatResponse = await sendChat(message, conversationId);
       setConversationId(response.conversation_id);
@@ -106,6 +121,7 @@ export function Workbench() {
     if (!task || loading) return;
     setLoading(true);
     setDiagnostic(undefined);
+    setComparison(undefined);
     try {
       const next = await rerunTask(task);
       setCalculation(next);
@@ -113,6 +129,24 @@ export function Workbench() {
       setMessages((current) => [...current, { role: "agent", text: "已按当前条件重新创建确定性计算运行。" }]);
     } catch (error) {
       setDiagnostic(error instanceof Error ? error.message : "重新计算失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function compare() {
+    if (!task || loading) return;
+    setLoading(true);
+    setDiagnostic(undefined);
+    try {
+      const nextComparison = await compareModels(task);
+      setComparison(nextComparison);
+      setMessages((current) => [
+        ...current,
+        { role: "agent", text: `已按当前条件对比 ${nextComparison.executed_count} 个可执行模型。` },
+      ]);
+    } catch (error) {
+      setDiagnostic(error instanceof Error ? error.message : "模型对比失败");
     } finally {
       setLoading(false);
     }
@@ -254,6 +288,49 @@ export function Workbench() {
 
             <div className="results-stack">
               {calculation && <ScientificValidationCard calculation={calculation} />}
+              {comparison && (
+                <section className="result-panel chart-panel" data-testid="comparison-panel">
+                  <div className="panel-heading">
+                    <h3>多模型对比</h3>
+                    <span>{comparison.summary}</span>
+                  </div>
+                  <VleChart
+                    calculationType={comparison.task.calculation_type}
+                    pressure={comparison.task.conditions.pressure_kPa}
+                    temperature={comparison.task.conditions.temperature_K}
+                    series={comparison.entries.flatMap((entry) =>
+                      entry.result && entry.result.points.length > 0
+                        ? [{ model_name: entry.model_name, points: entry.result.points }]
+                        : [],
+                    )}
+                  />
+                  <div className="cards comparison-cards" data-testid="comparison-status">
+                    {comparison.entries.map((entry) => (
+                      <article key={entry.model_name} className="model-validation-card">
+                        <div className="model-validation-topline">
+                          <strong>{entry.model_name}</strong>
+                          <span
+                            className={`model-validation-badge ${entry.validation?.overall_status ?? "blocked"}`}
+                          >
+                            {comparisonEntryStatus(entry)}
+                          </span>
+                        </div>
+                        <p>推荐分：{entry.score.toFixed(1)}</p>
+                        {entry.validation && (
+                          <p>
+                            残差 {entry.validation.maximum_equilibrium_residual.toExponential(2)} · 收敛{" "}
+                            {entry.validation.solver_converged ? "是" : "否"}
+                          </p>
+                        )}
+                        {entry.validation && entry.validation.warnings.length > 0 && (
+                          <p>{entry.validation.warnings[0]}</p>
+                        )}
+                        {entry.failure && <p>{entry.failure.message}</p>}
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              )}
               {calculation && !isFlashResult && calculation.result.gamma_infinity.length > 0 && (
                 <section className="result-panel chart-panel">
                   <div className="panel-heading">
@@ -575,9 +652,14 @@ export function Workbench() {
                 />
               </label>
             </div>
-            <button className="rerun rerun-compact" onClick={rerun} disabled={!task || loading}>
-              按当前条件重新计算
-            </button>
+            <div className="parameter-actions">
+              <button className="rerun rerun-compact" onClick={rerun} disabled={!task || loading}>
+                按当前条件重新计算
+              </button>
+              <button className="rerun rerun-compact" onClick={compare} disabled={!task || loading}>
+                模型对比
+              </button>
+            </div>
           </section>
 
           {diagnostic && (

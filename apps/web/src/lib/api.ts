@@ -1,4 +1,9 @@
-import type { CalculationEnvelope, ChatResponse, TaskManifest } from "./types";
+import type {
+  CalculationEnvelope,
+  ChatResponse,
+  ModelComparisonResponse,
+  TaskManifest,
+} from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -34,6 +39,13 @@ export function rerunTask(task: TaskManifest): Promise<CalculationEnvelope> {
   const endpoint = paths[task.calculation_type];
   if (!endpoint) throw new Error(`不支持的计算类型：${task.calculation_type}`);
   return request<CalculationEnvelope>(`/api/calculations/${endpoint}`, {
+    method: "POST",
+    body: JSON.stringify(task),
+  });
+}
+
+export function compareModels(task: TaskManifest): Promise<ModelComparisonResponse> {
+  return request<ModelComparisonResponse>("/api/calculations/compare", {
     method: "POST",
     body: JSON.stringify(task),
   });

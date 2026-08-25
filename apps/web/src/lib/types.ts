@@ -80,6 +80,11 @@ export interface EquilibriumPoint {
   equilibrium_residual: number;
 }
 
+export interface ModelSeries {
+  model_name: string;
+  points: EquilibriumPoint[];
+}
+
 export interface GammaInfinityPoint {
   temperature_K: number;
   solute_index: number;
@@ -174,6 +179,34 @@ export interface CalculationEnvelope {
   validation: ValidationReport;
   parameter_sources: Array<Record<string, string>>;
   model_recommendations: ModelRecommendation[];
+}
+
+export interface FailureDetail {
+  failure_type: string;
+  message: string;
+  recovery_action: string;
+  details: Record<string, unknown>;
+}
+
+export interface ModelComparisonEntry {
+  model_name: string;
+  score: number;
+  executable: boolean;
+  result: CalculationEnvelope["result"] | null;
+  validation: ValidationReport | null;
+  failure: FailureDetail | null;
+  parameter_sources: Array<Record<string, string>>;
+  warnings: string[];
+}
+
+export interface ModelComparisonResponse {
+  task: TaskManifest;
+  entries: ModelComparisonEntry[];
+  executed_count: number;
+  passed_count: number;
+  warning_count: number;
+  failed_count: number;
+  summary: string;
 }
 
 export interface EvidenceStatement {

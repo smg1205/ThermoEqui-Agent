@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Workbench } from "./Workbench";
 
@@ -47,6 +47,7 @@ const response = {
       task_id: "task-1",
       calculation_type: "isobaric_vle",
       model_name: "Ideal/Raoult",
+      input_snapshot: {},
       points: [
         {
           temperature_K: 383.7,
@@ -56,6 +57,8 @@ const response = {
           equilibrium_residual: 0,
         },
       ],
+      gamma_infinity: [],
+      phases: [],
       pressure_kPa: 101.325,
       phase_state: "curve",
       converged: true,
@@ -64,6 +67,7 @@ const response = {
       warnings: [],
       backend_version: "test",
       solver_name: "solver",
+      created_at: "2026-08-25T00:00:00Z",
     },
     validation: {
       overall_status: "passed",
@@ -186,5 +190,56 @@ describe("Workbench", () => {
     expect(screen.getByText("NRTL does not support LLE")).toBeInTheDocument();
     expect(screen.getByText("模型不可用")).toBeInTheDocument();
     expect(screen.getByText("建议：选择其他支持模型或补充必要参数。")).toBeInTheDocument();
+  });
+
+  it("runs a multi-model comparison and shows per-model status and validation", async () => {
+    const compareResponse = {
+      task: response.task,
+      entries: [
+        {
+          model_name: "NRTL",
+          score: 90,
+          executable: true,
+          result: { ...response.calculation.result, model_name: "NRTL" },
+          validation: response.calculation.validation,
+          failure: null,
+          parameter_sources: [],
+          warnings: [],
+        },
+        {
+          model_name: "UNIQUAC",
+          score: 86,
+          executable: true,
+          result: { ...response.calculation.result, model_name: "UNIQUAC" },
+          validation: response.calculation.validation,
+          failure: null,
+          parameter_sources: [],
+          warnings: [],
+        },
+      ],
+      executed_count: 2,
+      passed_count: 2,
+      warning_count: 0,
+      failed_count: 0,
+      summary: "对比 2 个可执行模型：2 通过、0 警告、0 失败。",
+    };
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve({
+        ok: true,
+        json: async () => (url.includes("/api/calculations/compare") ? compareResponse : response),
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<Workbench />);
+    fireEvent.click(screen.getByRole("button", { name: /运行任务/i }));
+    await waitFor(() => expect(screen.getByText("Calculation complete.")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "模型对比" }));
+    await waitFor(() => expect(screen.getByTestId("comparison-status")).toBeInTheDocument());
+    expect(screen.getByText("对比 2 个可执行模型：2 通过、0 警告、0 失败。")).toBeInTheDocument();
+    expect(screen.getByText("已按当前条件对比 2 个可执行模型。")).toBeInTheDocument();
+    const status = screen.getByTestId("comparison-status");
+    expect(within(status).getAllByText("passed")).toHaveLength(2);
+    expect(within(status).getAllByText("NRTL").length).toBeGreaterThan(0);
+    expect(within(status).getAllByText("UNIQUAC").length).toBeGreaterThan(0);
   });
 });
