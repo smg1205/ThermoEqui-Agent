@@ -1609,6 +1609,46 @@ tbody tr:nth-child(even) {
   margin-top: 0;
 }
 
+.phase-diagram-controls {
+  margin: 2px 0 10px;
+}
+
+.phase-diagram-selection-count {
+  font-size: 11px;
+  color: #586a78;
+  margin: 0 0 6px;
+}
+
+.phase-diagram-model-select {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+
+.phase-diagram-model-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.phase-diagram-model-option.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.phase-diagram-model-option input {
+  accent-color: var(--teal);
+}
+
+.phase-diagram-empty-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: #a7520a;
+}
+
 @media (max-width: 1100px) {
   .top-workspace {
     grid-template-columns: minmax(0, 1fr) 320px;

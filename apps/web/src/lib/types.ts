@@ -188,24 +188,31 @@ export interface FailureDetail {
   details: Record<string, unknown>;
 }
 
-export interface ModelComparisonEntry {
+export type PhaseDiagramStatus = "passed" | "warning" | "failed" | "unsupported";
+
+export type PhaseDiagramType = "TXY" | "PXY";
+
+export interface PhaseDiagramEntry {
   model_name: string;
-  score: number;
+  status: PhaseDiagramStatus;
   executable: boolean;
+  score?: number | null;
   result: CalculationEnvelope["result"] | null;
-  validation: ValidationReport | null;
+  validation?: ValidationReport | null;
   failure: FailureDetail | null;
-  parameter_sources: Array<Record<string, string>>;
+  parameter_sources?: Array<Record<string, string>>;
   warnings: string[];
 }
 
-export interface ModelComparisonResponse {
+export interface PhaseDiagramResponse {
   task: TaskManifest;
-  entries: ModelComparisonEntry[];
-  executed_count: number;
+  diagram_type: PhaseDiagramType;
+  entries: PhaseDiagramEntry[];
+  total_models: number;
   passed_count: number;
   warning_count: number;
   failed_count: number;
+  unsupported_count: number;
   summary: string;
 }
 

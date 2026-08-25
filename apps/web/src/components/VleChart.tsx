@@ -1,7 +1,12 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import type { EquilibriumPoint, ModelSeries } from "@/lib/types";
+import type {
+  EquilibriumPoint,
+  ModelSeries,
+  PhaseDiagramEntry,
+  PhaseDiagramType,
+} from "@/lib/types";
 
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
@@ -81,6 +86,8 @@ export function VleChart({
   model,
   calculationType,
   series,
+  entries,
+  diagramType,
 }: {
   points?: EquilibriumPoint[];
   pressure?: number | null;
@@ -88,17 +95,35 @@ export function VleChart({
   model?: string;
   calculationType: string;
   series?: ModelSeries[];
+  entries?: PhaseDiagramEntry[];
+  diagramType?: PhaseDiagramType;
 }) {
+  const hasEntries = entries !== undefined && entries.length > 0;
   const hasSeries = series !== undefined && series.length > 0;
-  if (!hasSeries && !(points && points.length > 0)) {
+  const drawableSeries = hasEntries
+    ? entries!.flatMap((entry) =>
+        (entry.status === "passed" || entry.status === "warning") &&
+        entry.result &&
+        entry.result.points.length > 0
+          ? [{ model_name: entry.model_name, points: entry.result.points }]
+          : [],
+      )
+    : [];
+  if (hasEntries && drawableSeries.length === 0) {
     return <div className="empty-chart">当前结果不包含相图数据。</div>;
   }
-  const isIsothermal = calculationType === "isothermal_vle";
+  if (!hasEntries && !hasSeries && !(points && points.length > 0)) {
+    return <div className="empty-chart">当前结果不包含相图数据。</div>;
+  }
+  const isIsothermal =
+    diagramType !== undefined ? diagramType === "PXY" : calculationType === "isothermal_vle";
   const condition = isIsothermal ? `${temperature?.toFixed(3) ?? "--"} K` : `${pressure?.toFixed(3) ?? "--"} kPa`;
-  const data = hasSeries
-    ? series!.flatMap((item, index) => seriesTraces(item, index, isIsothermal))
-    : singleTraces(points ?? [], model ?? "Model", isIsothermal);
-  const title = hasSeries ? condition : `${model ?? "Model"} · ${condition}`;
+  const data = hasEntries
+    ? drawableSeries.flatMap((item, index) => seriesTraces(item, index, isIsothermal))
+    : hasSeries
+      ? series!.flatMap((item, index) => seriesTraces(item, index, isIsothermal))
+      : singleTraces(points ?? [], model ?? "Model", isIsothermal);
+  const title = hasEntries || hasSeries ? condition : `${model ?? "Model"} · ${condition}`;
 
   return (
     <div className="chart-shell" aria-label="VLE 相图" data-testid="vle-chart">

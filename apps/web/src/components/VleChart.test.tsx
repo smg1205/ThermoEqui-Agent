@@ -47,4 +47,85 @@ describe("VleChart", () => {
     ]);
     expect(props.data[0].y).toEqual([150, 100]);
   });
+
+  it("draws only passed and warning entries and uses pressure for PXY", () => {
+    render(
+      <VleChart
+        entries={[
+          { model_name: "NRTL", status: "passed", executable: true, result: { points }, failure: null, warnings: [] },
+          {
+            model_name: "SRK",
+            status: "failed",
+            executable: false,
+            result: null,
+            failure: {
+              failure_type: "missing_parameters",
+              message: "SRK binary parameters are unavailable.",
+              recovery_action: "Import reviewed SRK kij parameters.",
+              details: {},
+            },
+            warnings: ["Missing reviewed SRK kij."],
+          },
+          {
+            model_name: "UNIQUAC",
+            status: "warning",
+            executable: true,
+            result: { points },
+            failure: null,
+            warnings: [],
+          },
+        ]}
+        diagramType="PXY"
+        temperature={350}
+        calculationType="isothermal_vle"
+      />,
+    );
+    const props = JSON.parse(screen.getByTestId("plot-props").textContent ?? "{}") as PlotProps;
+    expect(props.data).toHaveLength(4);
+    expect(props.data.map((trace) => trace.name)).toEqual([
+      "NRTL liquid",
+      "NRTL vapor",
+      "UNIQUAC liquid",
+      "UNIQUAC vapor",
+    ]);
+    expect(props.data[0].y).toEqual([150, 100]);
+  });
+
+  it("uses temperature as the ordinate for TXY entries", () => {
+    render(
+      <VleChart
+        entries={[
+          { model_name: "NRTL", status: "passed", executable: true, result: { points }, failure: null, warnings: [] },
+        ]}
+        diagramType="TXY"
+        pressure={101.325}
+        calculationType="isobaric_vle"
+      />,
+    );
+    const props = JSON.parse(screen.getByTestId("plot-props").textContent ?? "{}") as PlotProps;
+    expect(props.data).toHaveLength(2);
+    expect(props.data[0].y).toEqual([350, 350]);
+    expect(props.layout.yaxis.title.text).toBe("温度 / K");
+  });
+
+  it("shows the empty state when every entry is failed or unsupported", () => {
+    render(
+      <VleChart
+        entries={[
+          { model_name: "SRK", status: "failed", executable: false, result: null, failure: null, warnings: [] },
+          {
+            model_name: "PGSSI",
+            status: "unsupported",
+            executable: false,
+            result: null,
+            failure: null,
+            warnings: [],
+          },
+        ]}
+        diagramType="TXY"
+        calculationType="isobaric_vle"
+      />,
+    );
+    expect(screen.getByText("当前结果不包含相图数据。")).toBeInTheDocument();
+  });
 });

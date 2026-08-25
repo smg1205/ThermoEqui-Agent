@@ -1,7 +1,7 @@
 import type {
   CalculationEnvelope,
   ChatResponse,
-  ModelComparisonResponse,
+  PhaseDiagramResponse,
   TaskManifest,
 } from "./types";
 
@@ -44,8 +44,8 @@ export function rerunTask(task: TaskManifest): Promise<CalculationEnvelope> {
   });
 }
 
-export function compareModels(task: TaskManifest): Promise<ModelComparisonResponse> {
-  return request<ModelComparisonResponse>("/api/calculations/compare", {
+export function phaseDiagram(task: TaskManifest): Promise<PhaseDiagramResponse> {
+  return request<PhaseDiagramResponse>("/api/calculations/phase-diagram", {
     method: "POST",
     body: JSON.stringify(task),
   });

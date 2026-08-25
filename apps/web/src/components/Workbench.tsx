@@ -5,16 +5,15 @@ import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import { compareModels, exportUrl, rerunTask, sendChat } from "@/lib/api";
+import { exportUrl, phaseDiagram, rerunTask, sendChat } from "@/lib/api";
 import type {
   AgentStep,
   CalculationEnvelope,
   ChatResponse,
-  ModelComparisonEntry,
-  ModelComparisonResponse,
+  PhaseDiagramEntry,
+  PhaseDiagramResponse,
   TaskManifest,
 } from "@/lib/types";
-import { AgentRuntime } from "./AgentRuntime";
 import { FlashResultCard } from "./FlashResultCard";
 import { GammaChart } from "./GammaChart";
 import { ScientificValidationCard } from "./ScientificValidationCard";
@@ -50,10 +49,16 @@ function modelStatusLabel(executable: boolean): string {
   return executable ? "模型可用" : "模型不可用";
 }
 
-function comparisonEntryStatus(entry: ModelComparisonEntry): string {
-  if (entry.failure) return "失败";
-  if (!entry.validation) return "未验证";
-  return entry.validation.overall_status;
+function phaseDiagramEntryStatus(entry: PhaseDiagramEntry): string {
+  return entry.status;
+}
+
+function isDrawableEntry(entry: PhaseDiagramEntry): boolean {
+  return (
+    (entry.status === "passed" || entry.status === "warning") &&
+    entry.result !== null &&
+    entry.result.points.length > 0
+  );
 }
 
 export function Workbench() {
@@ -67,7 +72,8 @@ export function Workbench() {
   const [conversationId, setConversationId] = useState<string>();
   const [task, setTask] = useState<TaskManifest>();
   const [calculation, setCalculation] = useState<CalculationEnvelope>();
-  const [comparison, setComparison] = useState<ModelComparisonResponse>();
+  const [phaseDiagramResult, setPhaseDiagramResult] = useState<PhaseDiagramResponse>();
+  const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [runs, setRuns] = useState<CalculationEnvelope[]>([]);
   const [executionSteps, setExecutionSteps] = useState<AgentStep[]>([]);
   const [activeTab, setActiveTab] = useState<DetailTab>("table");
@@ -94,7 +100,8 @@ export function Workbench() {
     setMessages((current) => [...current, { role: "user", text: message }]);
     setLoading(true);
     setDiagnostic(undefined);
-    setComparison(undefined);
+    setPhaseDiagramResult(undefined);
+    setSelectedModels([]);
     try {
       const response: ChatResponse = await sendChat(message, conversationId);
       setConversationId(response.conversation_id);
@@ -121,7 +128,8 @@ export function Workbench() {
     if (!task || loading) return;
     setLoading(true);
     setDiagnostic(undefined);
-    setComparison(undefined);
+    setPhaseDiagramResult(undefined);
+    setSelectedModels([]);
     try {
       const next = await rerunTask(task);
       setCalculation(next);
@@ -134,22 +142,32 @@ export function Workbench() {
     }
   }
 
-  async function compare() {
+  async function phaseDiagramCompare() {
     if (!task || loading) return;
     setLoading(true);
     setDiagnostic(undefined);
     try {
-      const nextComparison = await compareModels(task);
-      setComparison(nextComparison);
+      const next = await phaseDiagram(task);
+      setPhaseDiagramResult(next);
+      setSelectedModels(next.entries.filter(isDrawableEntry).map((entry) => entry.model_name));
       setMessages((current) => [
         ...current,
-        { role: "agent", text: `已按当前条件对比 ${nextComparison.executed_count} 个可执行模型。` },
+        {
+          role: "agent",
+          text: `已按当前条件生成多模型相图：${next.total_models} 个模型（通过 ${next.passed_count}、警告 ${next.warning_count}、失败 ${next.failed_count}、不支持 ${next.unsupported_count}）。`,
+        },
       ]);
     } catch (error) {
-      setDiagnostic(error instanceof Error ? error.message : "模型对比失败");
+      setDiagnostic(error instanceof Error ? error.message : "多模型相图生成失败");
     } finally {
       setLoading(false);
     }
+  }
+
+  function toggleSelectedModel(modelName: string) {
+    setSelectedModels((current) =>
+      current.includes(modelName) ? current.filter((name) => name !== modelName) : [...current, modelName],
+    );
   }
 
   function updatePressure(value: string) {
@@ -265,12 +283,6 @@ export function Workbench() {
             </div>
           </section>
 
-          <AgentRuntime
-            steps={executionSteps}
-            loading={loading}
-            modelName={calculation?.result.model_name ?? task?.model_name}
-          />
-
           <section className="results results-inline">
             <div className="results-header">
               <div>
@@ -288,44 +300,78 @@ export function Workbench() {
 
             <div className="results-stack">
               {calculation && <ScientificValidationCard calculation={calculation} />}
-              {comparison && (
-                <section className="result-panel chart-panel" data-testid="comparison-panel">
+              {phaseDiagramResult && (
+                <section className="result-panel chart-panel" data-testid="phase-diagram-panel">
                   <div className="panel-heading">
-                    <h3>多模型对比</h3>
-                    <span>{comparison.summary}</span>
+                    <h3>多模型相图</h3>
+                    <span>
+                      {phaseDiagramResult.diagram_type} · {phaseDiagramResult.total_models} 个模型
+                    </span>
                   </div>
+                  <div className="phase-diagram-controls">
+                    <p className="phase-diagram-selection-count" data-testid="phase-diagram-selection-count">
+                      已选{" "}
+                      {selectedModels.filter((name) =>
+                        phaseDiagramResult.entries.some((entry) => entry.model_name === name && isDrawableEntry(entry)),
+                      ).length}{" "}
+                      / {phaseDiagramResult.entries.filter(isDrawableEntry).length} 个可绘制模型
+                    </p>
+                    <div className="phase-diagram-model-select" data-testid="phase-diagram-model-select">
+                      {phaseDiagramResult.entries.map((entry) => {
+                        const drawable = isDrawableEntry(entry);
+                        return (
+                          <label
+                            key={entry.model_name}
+                            className={`phase-diagram-model-option ${drawable ? "" : "disabled"}`}
+                          >
+                            <input
+                              type="checkbox"
+                              disabled={!drawable}
+                              checked={drawable && selectedModels.includes(entry.model_name)}
+                              onChange={() => toggleSelectedModel(entry.model_name)}
+                              aria-label={`选择 ${entry.model_name}`}
+                            />
+                            {entry.model_name}
+                            <span className={`model-validation-badge ${entry.status}`}>{entry.status}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {selectedModels.length === 0 && (
+                    <p className="phase-diagram-empty-hint">请至少选择一个模型以显示相图曲线。</p>
+                  )}
                   <VleChart
-                    calculationType={comparison.task.calculation_type}
-                    pressure={comparison.task.conditions.pressure_kPa}
-                    temperature={comparison.task.conditions.temperature_K}
-                    series={comparison.entries.flatMap((entry) =>
-                      entry.result && entry.result.points.length > 0
-                        ? [{ model_name: entry.model_name, points: entry.result.points }]
-                        : [],
+                    calculationType={
+                      phaseDiagramResult.task?.calculation_type ?? task?.calculation_type ?? "isobaric_vle"
+                    }
+                    pressure={
+                      phaseDiagramResult.task?.conditions.pressure_kPa ?? task?.conditions.pressure_kPa
+                    }
+                    temperature={
+                      phaseDiagramResult.task?.conditions.temperature_K ?? task?.conditions.temperature_K
+                    }
+                    entries={phaseDiagramResult.entries.filter((entry) =>
+                      selectedModels.includes(entry.model_name),
                     )}
+                    diagramType={phaseDiagramResult.diagram_type}
                   />
-                  <div className="cards comparison-cards" data-testid="comparison-status">
-                    {comparison.entries.map((entry) => (
+                  <div className="cards phase-diagram-cards" data-testid="phase-diagram-status">
+                    {phaseDiagramResult.entries.map((entry) => (
                       <article key={entry.model_name} className="model-validation-card">
                         <div className="model-validation-topline">
                           <strong>{entry.model_name}</strong>
-                          <span
-                            className={`model-validation-badge ${entry.validation?.overall_status ?? "blocked"}`}
-                          >
-                            {comparisonEntryStatus(entry)}
+                          <span className={`model-validation-badge ${entry.status}`}>
+                            {phaseDiagramEntryStatus(entry)}
                           </span>
                         </div>
-                        <p>推荐分：{entry.score.toFixed(1)}</p>
-                        {entry.validation && (
+                        {entry.result && (
                           <p>
-                            残差 {entry.validation.maximum_equilibrium_residual.toExponential(2)} · 收敛{" "}
-                            {entry.validation.solver_converged ? "是" : "否"}
+                            数据点 {entry.result.points.length} · 收敛 {entry.result.converged ? "是" : "否"}
                           </p>
                         )}
-                        {entry.validation && entry.validation.warnings.length > 0 && (
-                          <p>{entry.validation.warnings[0]}</p>
-                        )}
                         {entry.failure && <p>{entry.failure.message}</p>}
+                        {entry.warnings.length > 0 && <p>{entry.warnings.join(" ")}</p>}
                       </article>
                     ))}
                   </div>
@@ -656,8 +702,17 @@ export function Workbench() {
               <button className="rerun rerun-compact" onClick={rerun} disabled={!task || loading}>
                 按当前条件重新计算
               </button>
-              <button className="rerun rerun-compact" onClick={compare} disabled={!task || loading}>
-                模型对比
+              <button
+                className="rerun rerun-compact"
+                onClick={phaseDiagramCompare}
+                disabled={
+                  !task ||
+                  loading ||
+                  (task.calculation_type !== "isobaric_vle" && task.calculation_type !== "isothermal_vle")
+                }
+                title={task ? "仅支持 isobaric_vle（T-x-y）与 isothermal_vle（P-x-y）" : undefined}
+              >
+                多模型相图
               </button>
             </div>
           </section>
