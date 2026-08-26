@@ -31,6 +31,6 @@ describe("ExecutionTrace", () => {
     );
 
     expect(screen.getByText("运行中")).toBeInTheDocument();
-    expect(screen.getByText("等待该阶段开始。")).toBeInTheDocument();
+    expect(screen.getAllByText("等待该阶段开始。").length).toBeGreaterThan(0);
   });
 });

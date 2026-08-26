@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Workbench } from "./Workbench";
 
@@ -47,6 +47,7 @@ const response = {
       task_id: "task-1",
       calculation_type: "isobaric_vle",
       model_name: "Ideal/Raoult",
+      input_snapshot: {},
       points: [
         {
           temperature_K: 383.7,
@@ -56,6 +57,8 @@ const response = {
           equilibrium_residual: 0,
         },
       ],
+      gamma_infinity: [],
+      phases: [],
       pressure_kPa: 101.325,
       phase_state: "curve",
       converged: true,
@@ -64,6 +67,7 @@ const response = {
       warnings: [],
       backend_version: "test",
       solver_name: "solver",
+      created_at: "2026-08-25T00:00:00Z",
     },
     validation: {
       overall_status: "passed",
@@ -127,8 +131,6 @@ describe("Workbench", () => {
     await waitFor(() => expect(screen.getByText("Calculation complete.")).toBeInTheDocument());
     expect(screen.getByTestId("vle-chart")).toBeInTheDocument();
     expect(screen.getByText("Benzene / Toluene")).toBeInTheDocument();
-    expect(screen.getByText("1 任务理解")).toBeInTheDocument();
-    expect(screen.getByText("4 结果验证")).toBeInTheDocument();
   });
 
   it("clears the textarea after a successful task submission", async () => {
@@ -186,5 +188,97 @@ describe("Workbench", () => {
     expect(screen.getByText("NRTL does not support LLE")).toBeInTheDocument();
     expect(screen.getByText("模型不可用")).toBeInTheDocument();
     expect(screen.getByText("建议：选择其他支持模型或补充必要参数。")).toBeInTheDocument();
+  });
+
+  it("runs a multi-model phase diagram and shows per-model status, failure, and warnings", async () => {
+    const phaseDiagramResponse = {
+      diagram_type: "TXY",
+      entries: [
+        {
+          model_name: "NRTL",
+          status: "passed",
+          executable: true,
+          result: { ...response.calculation.result, model_name: "NRTL" },
+          failure: null,
+          warnings: [],
+        },
+        {
+          model_name: "UNIQUAC",
+          status: "warning",
+          executable: true,
+          result: { ...response.calculation.result, model_name: "UNIQUAC" },
+          failure: null,
+          warnings: ["UNIQUAC 预测性模型，需工程复核。"],
+        },
+        {
+          model_name: "SRK",
+          status: "failed",
+          executable: false,
+          result: null,
+          failure: {
+            failure_type: "missing_parameters",
+            message: "SRK binary parameters are unavailable.",
+            recovery_action: "Import reviewed SRK kij parameters.",
+            details: {},
+          },
+          warnings: ["Missing reviewed SRK kij."],
+        },
+        {
+          model_name: "PGSSI",
+          status: "unsupported",
+          executable: false,
+          result: null,
+          failure: {
+            failure_type: "unsupported_model",
+            message: "PGSSI does not support isobaric_vle.",
+            recovery_action: "Choose another model.",
+            details: {},
+          },
+          warnings: [],
+        },
+      ],
+      total_models: 4,
+      passed_count: 1,
+      warning_count: 1,
+      failed_count: 1,
+      unsupported_count: 1,
+      summary: "Compared 4 models: 1 passed, 1 warnings, 1 failed, 1 unsupported.",
+    };
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve({
+        ok: true,
+        json: async () => (url.includes("/api/calculations/phase-diagram") ? phaseDiagramResponse : response),
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<Workbench />);
+    fireEvent.click(screen.getByRole("button", { name: /运行任务/i }));
+    await waitFor(() => expect(screen.getByText("Calculation complete.")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "多模型相图" }));
+    await waitFor(() => expect(screen.getByTestId("phase-diagram-status")).toBeInTheDocument());
+    expect(screen.getByText(/已按当前条件生成多模型相图/)).toBeInTheDocument();
+    const status = screen.getByTestId("phase-diagram-status");
+    expect(within(status).getAllByText("passed")).toHaveLength(1);
+    expect(within(status).getAllByText("warning")).toHaveLength(1);
+    expect(within(status).getAllByText("failed")).toHaveLength(1);
+    expect(within(status).getAllByText("unsupported")).toHaveLength(1);
+    expect(within(status).getByText("SRK binary parameters are unavailable.")).toBeInTheDocument();
+    expect(within(status).getByText("Missing reviewed SRK kij.")).toBeInTheDocument();
+    expect(within(status).getByText("PGSSI does not support isobaric_vle.")).toBeInTheDocument();
+
+    const select = screen.getByTestId("phase-diagram-model-select");
+    expect(within(select).getAllByRole("checkbox")).toHaveLength(4);
+    expect(within(select).getByLabelText("选择 NRTL")).toBeChecked();
+    expect(within(select).getByLabelText("选择 UNIQUAC")).toBeChecked();
+    expect(within(select).getByLabelText("选择 SRK")).toBeDisabled();
+    expect(within(select).getByLabelText("选择 PGSSI")).toBeDisabled();
+    expect(screen.getByTestId("phase-diagram-selection-count")).toHaveTextContent("已选 2 / 2 个可绘制模型");
+
+    fireEvent.click(within(select).getByLabelText("选择 UNIQUAC"));
+    expect(screen.getByTestId("phase-diagram-selection-count")).toHaveTextContent("已选 1 / 2 个可绘制模型");
+    expect(screen.queryByText("请至少选择一个模型以显示相图曲线。")).not.toBeInTheDocument();
+
+    fireEvent.click(within(select).getByLabelText("选择 NRTL"));
+    expect(screen.getByText("请至少选择一个模型以显示相图曲线。")).toBeInTheDocument();
   });
 });

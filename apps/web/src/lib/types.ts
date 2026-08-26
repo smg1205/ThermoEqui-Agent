@@ -80,6 +80,11 @@ export interface EquilibriumPoint {
   equilibrium_residual: number;
 }
 
+export interface ModelSeries {
+  model_name: string;
+  points: EquilibriumPoint[];
+}
+
 export interface GammaInfinityPoint {
   temperature_K: number;
   solute_index: number;
@@ -174,6 +179,41 @@ export interface CalculationEnvelope {
   validation: ValidationReport;
   parameter_sources: Array<Record<string, string>>;
   model_recommendations: ModelRecommendation[];
+}
+
+export interface FailureDetail {
+  failure_type: string;
+  message: string;
+  recovery_action: string;
+  details: Record<string, unknown>;
+}
+
+export type PhaseDiagramStatus = "passed" | "warning" | "failed" | "unsupported";
+
+export type PhaseDiagramType = "TXY" | "PXY";
+
+export interface PhaseDiagramEntry {
+  model_name: string;
+  status: PhaseDiagramStatus;
+  executable: boolean;
+  score?: number | null;
+  result: CalculationEnvelope["result"] | null;
+  validation?: ValidationReport | null;
+  failure: FailureDetail | null;
+  parameter_sources?: Array<Record<string, string>>;
+  warnings: string[];
+}
+
+export interface PhaseDiagramResponse {
+  task: TaskManifest;
+  diagram_type: PhaseDiagramType;
+  entries: PhaseDiagramEntry[];
+  total_models: number;
+  passed_count: number;
+  warning_count: number;
+  failed_count: number;
+  unsupported_count: number;
+  summary: string;
 }
 
 export interface EvidenceStatement {
