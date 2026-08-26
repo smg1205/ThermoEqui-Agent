@@ -13,6 +13,7 @@ from thermo_engine.ideal import IdealRaoultBackend
 from thermo_engine.nrtl_backend import NrtlBackend
 from thermo_engine.pgssi_backend import PgssiBackend
 from thermo_engine.ghgeat_backend import GhgeatBackend
+from thermo_engine.thermoformer_backend import ThermoFormerBackend
 from thermo_engine.phasepy_backend import PhasepyPengRobinsonBackend
 from thermo_engine.properties import resolve_component
 from thermo_engine.rk_backend import ThermoRkBackend
@@ -342,6 +343,19 @@ DEFAULT_BACKEND_REGISTRY = ThermodynamicBackendRegistry(
             aliases=frozenset({"pgssi", "pgssi gamma-infinity", "pgssi gamma infinity"}),
             supported_calculations=frozenset({"infinite_dilution_activity"}),
             factory=PgssiBackend,
+        ),
+        BackendRegistration(
+            canonical_name="ThermoFormer",
+            aliases=frozenset({"thermoformer", "thermo former", "tf"}),
+            supported_calculations=frozenset(
+                {
+                    "bubble_point",
+                    "isothermal_vle",
+                    "isobaric_vle",
+                    "infinite_dilution_activity",
+                }
+            ),
+            factory=ThermoFormerBackend,
         ),
         BackendRegistration(
             canonical_name="GHGEAT",

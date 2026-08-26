@@ -1,0 +1,9 @@
+model_name: ThermoFormer
+family: ml_property_prediction
+supported_tasks: [VLE]
+excluded_systems: [electrolyte, reactive, SLE, polymer, hydrate, petroleum_pseudocomponent, VLLE, LLE]
+requires_binary_parameters: false
+pressure_regime: [low, moderate]
+validation_requirements: [equilibrium_residual_small, converged_true, temperature_positive, pressure_positive]
+implementation_status: available
+production_ready: false

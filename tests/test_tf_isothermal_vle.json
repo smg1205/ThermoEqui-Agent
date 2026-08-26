@@ -1,0 +1,25 @@
+{
+  "equilibrium_type": "VLE",
+  "calculation_type": "isothermal_vle",
+  "components": [
+    {
+      "component_id": "ethanol",
+      "name": "ethanol",
+      "cas_number": "64-17-5",
+      "smiles": "CCO",
+      "aliases": []
+    },
+    {
+      "component_id": "water",
+      "name": "water",
+      "cas_number": "7732-18-5",
+      "smiles": "O",
+      "aliases": []
+    }
+  ],
+  "conditions": {
+    "temperature_K": 333.15
+  },
+  "model_name": "ThermoFormer",
+  "points": 9
+}

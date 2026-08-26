@@ -63,6 +63,7 @@ _CHINESE_ALIAS_MAP: dict[str, str] = {
     "乙苯": "ethylbenzene",
     "苯乙烯": "styrene",
     "乙醇": "ethanol",
+    "醇": "ethanol",
     "甲醇": "methanol",
     "正丁醇": "n-butanol",
     "异丁醇": "isobutanol",
