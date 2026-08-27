@@ -3,8 +3,10 @@
 FastAPI publishes OpenAPI at `/docs`. Every response carries `X-Request-ID`; errors use
 `{"error":{"code","message","details","request_id"}}`. Calculation routes create immutable run
 snapshots. `GET /api/runs?limit=20&offset=0&status=passed|warning|failed` returns lightweight run
-summaries in reverse chronological order. `GET /api/runs/{run_id}/export?format=json|csv` returns a
-downloadable artifact.
+summaries in reverse chronological order. `GET /api/runs/{run_id}/export?format=json|csv|dwsim` returns a
+downloadable artifact. The `dwsim` format creates a `.dwxmz` equilibrium-flash flowsheet through
+the local DWSIM Automation API. It requires the optional `dwsim` dependency and a `DWSIM_HOME`
+environment variable pointing to the directory containing `DWSIM.Automation.dll`.
 
 Unexpected exceptions return a sanitized `500 internal_server_error` with the request ID in both
 the JSON body and response header. Exception messages and database/provider details are not

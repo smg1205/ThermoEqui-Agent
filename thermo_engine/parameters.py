@@ -84,6 +84,24 @@ def has_srk_kij(
     return parameter_set is not None and is_srk_kij_parameter_set(parameter_set)
 
 
+def is_rk_kij_parameter_set(parameter_set: ParameterSet) -> bool:
+    return (
+        parameter_set.model_name.casefold() == "rk"
+        and len(parameter_set.component_order) == 2
+        and parameter_set.parameter_form.casefold() in {"rk", "rk kij", "rk binary", "rk binary kij"}
+        and "kij" in parameter_set.parameters
+        and "kij" in parameter_set.units
+    )
+
+
+def has_rk_kij(
+    parameter_sets: list[ParameterSet],
+    components: list[ComponentIdentity],
+) -> bool:
+    parameter_set = matching_parameter_set(parameter_sets, components, "RK")
+    return parameter_set is not None and is_rk_kij_parameter_set(parameter_set)
+
+
 def _required_parameter(parameters: dict[str, float], keys: tuple[str, ...]) -> float:
     normalized = {key.casefold(): value for key, value in parameters.items()}
     for key in keys:
@@ -181,5 +199,7 @@ def parameter_set_to_backend_params(
             ),
         }
     if form in {"srk", "srk kij", "srk binary", "srk binary kij"}:
+        return {"kij": _required_parameter(parameters, ("kij",))}
+    if form in {"rk", "rk kij", "rk binary", "rk binary kij"}:
         return {"kij": _required_parameter(parameters, ("kij",))}
     raise ValueError(f"Unsupported parameter_form {parameter_set.parameter_form!r}.")

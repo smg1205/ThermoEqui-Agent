@@ -495,3 +495,10 @@ class ClapeyronPengRobinsonBackend:
             "Clapeyron LLE is not enabled without an evidence-bearing activity-coefficient parameter set.",
             "Import reviewed NRTL or UNIQUAC parameters before enabling LLE.",
         )
+
+    def infinite_dilution_activity(self, request: TaskManifest) -> CalculationResult:
+        raise ThermoEquiError(
+            FailureType.UNSUPPORTED_MODEL,
+            "Clapeyron does not provide infinite-dilution activity coefficients through this adapter.",
+            "Use the PGSSI backend for gamma-infinity predictions.",
+        )

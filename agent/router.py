@@ -18,8 +18,13 @@ from schemas.domain import (
 from schemas.model_applicability import ModelAllowanceRequest
 from thermo_engine.errors import ThermoEquiError
 from thermo_engine.model_applicability import is_model_allowed
-from thermo_engine.parameters import has_chemsep_kij, is_srk_kij_parameter_set
+from thermo_engine.parameters import (
+    has_chemsep_kij,
+    is_rk_kij_parameter_set,
+    is_srk_kij_parameter_set,
+)
 from thermo_engine.properties import resolve_component
+from thermo_engine.unifac_backend import has_unifac_group_assignments
 
 CARD_DIRECTORY = Path(__file__).resolve().parents[1] / "knowledge" / "model_cards"
 
@@ -63,6 +68,8 @@ def available_parameter_models_for_task(
     for parameter_set in [*(parameter_sets or []), *task.parameters]:
         if _parameter_set_matches_task(parameter_set, task):
             if parameter_set.model_name.casefold() == "srk" and not is_srk_kij_parameter_set(parameter_set):
+                continue
+            if parameter_set.model_name.casefold() == "rk" and not is_rk_kij_parameter_set(parameter_set):
                 continue
             available.add(parameter_set.model_name)
     return available
@@ -131,6 +138,10 @@ def recommend_models(
             exclusions.append("Wilson is hard-excluded for LLE.")
         if card.model_name == "SRK" and len(task.components) != 2:
             exclusions.append("SRK is binary-only in the pilot adapter.")
+        if card.model_name == "RK" and len(task.components) != 2:
+            exclusions.append("RK is binary-only in the pilot adapter.")
+        if card.model_name == "UNIFAC" and not has_unifac_group_assignments(task.components):
+            exclusions.append("UNIFAC group assignments are unavailable for this system.")
         has_parameters = not card.requires_binary_parameters or card.model_name.casefold() in available
         if not has_parameters:
             reasons.append("Required binary parameters are unavailable; execution is blocked.")

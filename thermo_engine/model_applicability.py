@@ -25,17 +25,11 @@ def is_model_allowed(request: ModelAllowanceRequest) -> ModelAllowanceResult:
     available_parameters = {name.casefold() for name in request.available_parameters}
 
     if request.calculation_type not in entry.supported_calculation_types:
-        reasons.append(
-            f"calculation_type {request.calculation_type!r} is not supported by {entry.name}"
-        )
+        reasons.append(f"calculation_type {request.calculation_type!r} is not supported by {entry.name}")
     if request.equilibrium_type not in entry.supported_equilibrium_types:
-        reasons.append(
-            f"equilibrium_type {request.equilibrium_type!r} is not supported by {entry.name}"
-        )
+        reasons.append(f"equilibrium_type {request.equilibrium_type!r} is not supported by {entry.name}")
     if entry.requires_binary_parameters and entry.name.casefold() not in available_parameters:
-        reasons.append(
-            f"{entry.name} requires reviewed binary interaction parameters, but none are available"
-        )
+        reasons.append(f"{entry.name} requires reviewed binary interaction parameters, but none are available")
 
     if entry.name in {"NRTL", "UNIQUAC"} and request.equilibrium_type == "LLE":
         reasons.append(
@@ -62,19 +56,13 @@ def evaluate_model_applicability(
     available_parameter_models = {name.casefold() for name in request.available_parameter_models}
 
     if task.calculation_type not in entry.supported_calculation_types:
-        reasons.append(
-            f"Excluded: calculation_type {task.calculation_type!r} is not supported by {entry.name}."
-        )
+        reasons.append(f"Excluded: calculation_type {task.calculation_type!r} is not supported by {entry.name}.")
     if task.equilibrium_type not in entry.supported_equilibrium_types:
-        reasons.append(
-            f"Excluded: equilibrium_type {task.equilibrium_type!r} is not supported by {entry.name}."
-        )
+        reasons.append(f"Excluded: equilibrium_type {task.equilibrium_type!r} is not supported by {entry.name}.")
     if entry.implementation_status == "contract_only":
         reasons.append(f"Excluded: {entry.name} is contract_only and not executable in the current product.")
     if request.production_only and not entry.production_ready:
-        reasons.append(
-            f"Excluded: production_only was requested and {entry.name} is not production_ready."
-        )
+        reasons.append(f"Excluded: production_only was requested and {entry.name} is not production_ready.")
     if entry.requires_binary_parameters and entry.name.casefold() not in available_parameter_models:
         reasons.append(
             f"Excluded: {entry.name} requires binary parameters, but no reviewed parameter set is available."

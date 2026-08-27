@@ -1,0 +1,9 @@
+model_name: RK
+family: cubic_eos
+supported_tasks: [VLE, FLASH]
+excluded_systems: [electrolyte, strongly_associating_without_extension, reactive, SLE, polymer, hydrate, petroleum_pseudocomponent, VLLE]
+requires_binary_parameters: true
+pressure_regime: [moderate, high]
+validation_requirements: [composition_balance, fugacity_equality, phase_stability]
+implementation_status: available
+production_ready: false

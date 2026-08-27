@@ -1,0 +1,45 @@
+name: PGSSI
+aliases:
+  - pgssi
+  - pgssi gamma-infinity
+  - pgssi gamma infinity
+family: ml_property_prediction
+backend: pgssi
+implementation_status: available
+production_ready: true
+supported_equilibrium_types:
+  - VLE
+supported_calculation_types:
+  - infinite_dilution_activity
+excluded_systems:
+  - electrolyte
+  - reactive
+  - SLE
+  - polymer
+  - hydrate
+  - petroleum_pseudocomponent
+  - VLLE
+pressure_regime:
+  - low
+  - moderate
+requires_binary_parameters: false
+parameter_requirements:
+  - Trained PGSSI checkpoint (PGSSI_CHECKPOINT) and PGSSI source tree (PGSSI_SRC)
+  - SMILES for every component on the task
+  - torch, torch_geometric, and rdkit optional dependencies
+validation_requirements:
+  - gamma_infinity_positive
+  - gamma_infinity_finite
+  - temperature_positive
+scope_notes:
+  - First-class predictive backend for temperature-dependent infinite-dilution activity coefficients.
+  - PGSSI predicts log-gamma_inf = K1 + K2/T from solute/solvent SMILES and temperature.
+  - Independent of binary ParameterSet records; no VLE backend depends on PGSSI.
+  - Does not implement bubble/dew/flash; those requests fail with unsupported_model.
+  - production_ready after benchmark closure and extended testing in the ThermoEqui-Agent integration.
+optional_dependency: torch, torch_geometric, rdkit
+source_refs:
+  - knowledge/model_cards/pgssi.yaml
+  - thermo_engine/registry.py
+  - thermo_engine/pgssi_backend.py
+  - tests/test_pgssi_backend.py

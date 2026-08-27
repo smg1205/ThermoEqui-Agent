@@ -359,6 +359,13 @@ class IdealRaoultBackend:
             "Use the LLE contract with an evidence-backed NRTL or UNIQUAC backend when available.",
         )
 
+    def infinite_dilution_activity(self, request: TaskManifest) -> CalculationResult:
+        raise ThermoEquiError(
+            FailureType.UNSUPPORTED_MODEL,
+            "Ideal/Raoult does not provide infinite-dilution activity coefficients.",
+            "Use the PGSSI backend for gamma-infinity predictions.",
+        )
+
     def _root(self, objective: Callable[[float], float], low: float, high: float) -> tuple[float, int]:
         try:
             root, info = brentq(objective, low, high, xtol=self.tolerances.root, full_output=True)

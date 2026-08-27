@@ -439,3 +439,10 @@ class CubicEosBackend:
             f"The {self.model_name} adapter is not enabled for LLE in this release.",
             "Use a validated activity-coefficient LLE backend with evidence-bearing parameters.",
         )
+
+    def infinite_dilution_activity(self, request: TaskManifest) -> CalculationResult:
+        raise ThermoEquiError(
+            FailureType.UNSUPPORTED_MODEL,
+            f"The {self.model_name} equation of state does not provide infinite-dilution activity coefficients.",
+            "Use the PGSSI backend for gamma-infinity predictions.",
+        )

@@ -1,0 +1,29 @@
+{
+  "equilibrium_type": "VLE",
+  "calculation_type": "bubble_point",
+  "components": [
+    {
+      "component_id": "ethanol",
+      "name": "ethanol",
+      "cas_number": "64-17-5",
+      "smiles": "CCO",
+      "aliases": []
+    },
+    {
+      "component_id": "water",
+      "name": "water",
+      "cas_number": "7732-18-5",
+      "smiles": "O",
+      "aliases": []
+    }
+  ],
+  "conditions": {
+    "temperature_K": 298.15,
+    "liquid_composition": [
+      0.3,
+      0.7
+    ]
+  },
+  "model_name": "ThermoFormer",
+  "points": 5
+}

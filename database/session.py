@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from pathlib import Path
+from tempfile import gettempdir
 from uuid import uuid4
 
+from dotenv import load_dotenv
 from sqlalchemy import Engine, create_engine, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -25,12 +28,24 @@ from database.models import (
 from schemas.domain import CalculationEnvelope, ParameterSet, RunRecord, RunStatus, RunSummary
 
 
+def _default_database_url() -> str:
+    local_app_data = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
+    database_path = local_app_data / "ThermoEqui-Agent" / "thermoequi.db"
+    try:
+        database_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        database_path = Path(gettempdir()) / "ThermoEqui-Agent" / "thermoequi.db"
+        database_path.parent.mkdir(parents=True, exist_ok=True)
+    return f"sqlite:///{database_path.as_posix()}"
+
+
 def create_database_engine(url: str | None = None) -> Engine:
-    database_url: str = url if url is not None else (os.environ.get("DATABASE_URL") or "sqlite:///./thermoequi.db")
+    database_url: str = url if url is not None else (os.environ.get("DATABASE_URL") or _default_database_url())
     arguments = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
     return create_engine(database_url, connect_args=arguments)
 
 
+load_dotenv()
 engine = create_database_engine()
 
 

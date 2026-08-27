@@ -11,10 +11,15 @@ from thermo_engine.clapeyron_backend import ClapeyronPengRobinsonBackend
 from thermo_engine.errors import ThermoEquiError
 from thermo_engine.ideal import IdealRaoultBackend
 from thermo_engine.nrtl_backend import NrtlBackend
+from thermo_engine.pgssi_backend import PgssiBackend
+from thermo_engine.ghgeat_backend import GhgeatBackend
+from thermo_engine.thermoformer_backend import ThermoFormerBackend
 from thermo_engine.phasepy_backend import PhasepyPengRobinsonBackend
 from thermo_engine.properties import resolve_component
+from thermo_engine.rk_backend import ThermoRkBackend
 from thermo_engine.srk_backend import ThermoSrkBackend
 from thermo_engine.thermo_backend import ThermoPengRobinsonBackend
+from thermo_engine.unifac_backend import UnifacBackend, has_unifac_group_assignments
 from thermo_engine.uniquac_backend import UniquacBackend
 from thermo_engine.wilson_backend import WilsonBackend
 
@@ -74,6 +79,9 @@ class ThermodynamicBackendRegistry:
             reason = "Peng-Robinson was selected because the components are outside the local Ideal registry."
         elif _has_activity_coeff_params(task):
             selected, reason = _route_activity_coeff_model(task)
+        elif has_unifac_group_assignments(task.components):
+            selected = "UNIFAC"
+            reason = "UNIFAC pilot auto-selected because no production model or parameter set applies."
         else:
             raise ThermoEquiError(
                 FailureType.PARAMETER_OUT_OF_DOMAIN,
@@ -200,6 +208,45 @@ DEFAULT_BACKEND_REGISTRY = ThermodynamicBackendRegistry(
             factory=ThermoSrkBackend,
         ),
         BackendRegistration(
+            canonical_name="UNIFAC",
+            aliases=frozenset({"unifac"}),
+            supported_calculations=frozenset(
+                {
+                    "bubble_point",
+                    "dew_point",
+                    "isobaric_vle",
+                    "isothermal_vle",
+                    "tp_flash",
+                    "phase_stability",
+                    "azeotrope",
+                }
+            ),
+            factory=UnifacBackend,
+        ),
+        BackendRegistration(
+            canonical_name="RK",
+            aliases=frozenset(
+                {
+                    "rk",
+                    "redlich-kwong",
+                    "redlich kwong",
+                    "rk eos",
+                }
+            ),
+            supported_calculations=frozenset(
+                {
+                    "bubble_point",
+                    "dew_point",
+                    "isobaric_vle",
+                    "isothermal_vle",
+                    "tp_flash",
+                    "phase_stability",
+                    "azeotrope",
+                }
+            ),
+            factory=ThermoRkBackend,
+        ),
+        BackendRegistration(
             canonical_name="Phasepy/Peng-Robinson",
             aliases=frozenset(
                 {
@@ -290,6 +337,31 @@ DEFAULT_BACKEND_REGISTRY = ThermodynamicBackendRegistry(
                 }
             ),
             factory=WilsonBackend,
+        ),
+        BackendRegistration(
+            canonical_name="PGSSI",
+            aliases=frozenset({"pgssi", "pgssi gamma-infinity", "pgssi gamma infinity"}),
+            supported_calculations=frozenset({"infinite_dilution_activity"}),
+            factory=PgssiBackend,
+        ),
+        BackendRegistration(
+            canonical_name="ThermoFormer",
+            aliases=frozenset({"thermoformer", "thermo former", "tf"}),
+            supported_calculations=frozenset(
+                {
+                    "bubble_point",
+                    "isothermal_vle",
+                    "isobaric_vle",
+                    "infinite_dilution_activity",
+                }
+            ),
+            factory=ThermoFormerBackend,
+        ),
+        BackendRegistration(
+            canonical_name="GHGEAT",
+            aliases=frozenset({"ghgeat", "ghgeat gamma-infinity", "ghgeat gamma infinity"}),
+            supported_calculations=frozenset({"infinite_dilution_activity"}),
+            factory=GhgeatBackend,
         ),
     )
 )

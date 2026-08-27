@@ -8,19 +8,19 @@ import json
 import logging
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable
-
-from dotenv import load_dotenv
-
-load_dotenv()
 from contextlib import asynccontextmanager
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from uuid import uuid4
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
+from agent.comparison import compare_models
 from agent.executor import execute_task
 from agent.orchestrator import ConversationOrchestrator, DeterministicProvider
 from agent.providers import (
@@ -40,6 +40,7 @@ from schemas.domain import (
     ErrorBody,
     ErrorResponse,
     ModelCard,
+    ModelComparisonResponse,
     ModelRecommendation,
     ParameterSet,
     RunListResponse,
@@ -48,8 +49,11 @@ from schemas.domain import (
     TaskManifest,
     ValidationReport,
 )
+from thermo_engine.dwsim_export import export_dwsim_flowsheet
 from thermo_engine.errors import ThermoEquiError
 from thermo_engine.service import validate_equilibrium_result
+
+load_dotenv()
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(levelname)s %(message)s")
 logger = logging.getLogger("thermoequi.api")
@@ -116,7 +120,8 @@ app = FastAPI(
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -338,6 +343,16 @@ def tp_flash(task: TaskManifest, request: Request) -> CalculationEnvelope:
     return execute(_force_type(task, "tp_flash"), request.state.request_id)
 
 
+@app.post("/api/calculations/compare", response_model=ModelComparisonResponse)
+def compare_calculations(task: TaskManifest, request: Request) -> ModelComparisonResponse:
+    parameter_sets = repository_parameter_sets()
+    task = _task_with_repository_parameters(task, parameter_sets)
+    return compare_models(
+        task,
+        available_parameter_models=available_parameter_models_for_task(task, parameter_sets),
+    )
+
+
 @app.post("/api/calculations/azeotrope", response_model=CalculationEnvelope)
 def azeotrope(task: TaskManifest, request: Request) -> CalculationEnvelope:
     return execute(_force_type(task, "azeotrope"), request.state.request_id)
@@ -347,6 +362,45 @@ def azeotrope(task: TaskManifest, request: Request) -> CalculationEnvelope:
 def lle(task: TaskManifest, request: Request) -> CalculationEnvelope:
     return execute(
         task.model_copy(update={"calculation_type": "lle", "equilibrium_type": "LLE"}),
+        request.state.request_id,
+    )
+
+
+@app.post("/api/calculations/infinite-dilution-activity", response_model=CalculationEnvelope)
+def infinite_dilution_activity(task: TaskManifest, request: Request) -> CalculationEnvelope:
+    """PGSSI infinite-dilution activity coefficient prediction.
+
+    The first component is the solute and the second the solvent.  Requires the
+    PGSSI checkpoint (PGSSI_CHECKPOINT), the PGSSI source tree (PGSSI_SRC), and
+    SMILES on every component.
+    """
+    return execute(
+        task.model_copy(
+            update={
+                "calculation_type": "infinite_dilution_activity",
+                "equilibrium_type": "VLE",
+                "model_name": "PGSSI",
+            }
+        ),
+        request.state.request_id,
+    )
+
+@app.post("/api/calculations/infinite-dilution-activity-ghgeat", response_model=CalculationEnvelope)
+def infinite_dilution_activity_ghgeat(task: TaskManifest, request: Request) -> CalculationEnvelope:
+    """GHGEAT infinite-dilution activity coefficient prediction.
+
+    The first component is the solute and the second the solvent.  Requires the
+    GHGEAT checkpoint (GHGEAT_CHECKPOINT), the GHGEAT source tree (GHGEAT_SRC), and
+    SMILES on every component.
+    """
+    return execute(
+        task.model_copy(
+            update={
+                "calculation_type": "infinite_dilution_activity",
+                "equilibrium_type": "VLE",
+                "model_name": "GHGEAT",
+            }
+        ),
         request.state.request_id,
     )
 
@@ -375,11 +429,20 @@ def get_run(run_id: str) -> RunRecord:
 
 
 @app.get("/api/runs/{run_id}/export")
-def export_run(run_id: str, format: str = Query(default="json", pattern="^(json|csv)$")) -> Response:
+def export_run(run_id: str, format: str = Query(default="json", pattern="^(json|csv|dwsim)$")) -> Response:
     run = repository.get_run(run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Run not found")
     repository.record_export(run_id, format)
+    if format == "dwsim":
+        with TemporaryDirectory(prefix="thermoequi-dwsim-") as export_dir:
+            path = export_dwsim_flowsheet(run, Path(export_dir) / f"{run_id}.dwxmz")
+            dwsim_content = path.read_bytes()
+        return Response(
+            content=dwsim_content,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{run_id}.dwxmz"'},
+        )
     if format == "json":
         content = json.dumps(run.model_dump(mode="json"), ensure_ascii=False, indent=2)
         return Response(

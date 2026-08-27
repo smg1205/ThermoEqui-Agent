@@ -74,7 +74,7 @@ class YamlLoader:
             "validation_requirements": "验证要求",
             "parameters": "参数",
         }
-        
+
         for key, display_name in field_mappings.items():
             if key in data:
                 value = data[key]
@@ -87,10 +87,10 @@ class YamlLoader:
                 else:
                     value_str = str(value)
                 lines.append(f"{display_name}：{value_str}")
-        
+
         if not lines:
             return yaml.dump(data, default_flow_style=False, allow_unicode=True)
-        
+
         return "；".join(lines)
 
     def load(self, path: Path) -> list[Document]:

@@ -54,9 +54,11 @@ def _flash_task(model_name: str, parameters: list[ParameterSet] | None = None) -
 def canonical_task(model_name: str, parameters: list[ParameterSet] | None = None) -> TaskManifest:
     if model_name in {"NRTL", "UNIQUAC", "Wilson"}:
         return _activity_task(model_name, parameters)
+    if model_name == "UNIFAC":
+        return _activity_task(model_name, parameters)
     if model_name in {"Peng-Robinson", "Phasepy/Peng-Robinson", "Clapeyron/Peng-Robinson"}:
         return _flash_task(model_name, parameters)
-    if model_name == "SRK":
+    if model_name in {"SRK", "RK"}:
         return _flash_task(model_name, parameters)
     return TaskManifest(
         equilibrium_type="VLE",
@@ -76,8 +78,12 @@ def production_activity_parameter_set(model_name: str) -> ParameterSet:
     )
 
 
-def srk_fixture_parameter_set() -> ParameterSet:
-    path = Path(__file__).parent / "fixtures" / "srk_kij_methane_ethane.json"
+def fixture_parameter_set(model_name: str) -> ParameterSet:
+    filename = {
+        "SRK": "srk_kij_methane_ethane.json",
+        "RK": "rk_kij_methane_ethane.json",
+    }[model_name]
+    path = Path(__file__).parent / "fixtures" / filename
     return ParameterSet.model_validate(json.loads(path.read_text(encoding="utf-8")))
 
 
@@ -106,6 +112,7 @@ def test_every_registered_backend_implements_the_full_protocol_seam() -> None:
         "phase_stability",
         "azeotrope",
         "lle",
+        "infinite_dilution_activity",
     )
     for registration in DEFAULT_BACKEND_REGISTRY.registrations:
         backend = registration.factory()
@@ -136,7 +143,9 @@ def test_parameter_sources_are_structured_or_raise_structured_failures() -> None
         ("NRTL", "production"),
         ("UNIQUAC", "production"),
         ("Wilson", "production"),
+        ("UNIFAC", None),
         ("SRK", "fixture"),
+        ("RK", "fixture"),
     ],
 )
 def test_available_backends_cross_the_public_validation_gate(model_name: str, parameters: str | None) -> None:
@@ -144,7 +153,7 @@ def test_available_backends_cross_the_public_validation_gate(model_name: str, pa
     if parameters == "production":
         parameter_sets = [production_activity_parameter_set(model_name)]
     elif parameters == "fixture":
-        parameter_sets = [srk_fixture_parameter_set()]
+        parameter_sets = [fixture_parameter_set(model_name)]
 
     result = calculate_equilibrium(canonical_task(model_name, parameter_sets))
     report = validate_equilibrium_result(result)

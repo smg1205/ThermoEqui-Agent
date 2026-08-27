@@ -114,7 +114,7 @@ class KnowledgeGraph:
         load_path = path or GRAPH_STORE_PATH
         if not load_path.exists():
             return cls()
-        with open(load_path, "r", encoding="utf-8") as f:
+        with open(load_path, encoding="utf-8") as f:
             data = json.load(f)
         graph = cls()
         for node_data in data.get("nodes", []):
@@ -194,6 +194,7 @@ class KnowledgeGraph:
                         attributes={"reason": "excluded"},
                     )
                 )
+
     # ... 保留原有代码不变，在类末尾增加：
     def export_graphml(self, path: Path) -> None:
         """导出为 GraphML 格式，便于在可视化工具中查看"""
@@ -210,7 +211,7 @@ class KnowledgeGraph:
             ("pressure_regime", "string"),
         ]
         for key_name, key_type in keys:
-            key = ET.SubElement(root, "key", id=key_name, for_="node", attr_name=key_name, attr_type=key_type)
+            ET.SubElement(root, "key", id=key_name, for_="node", attr_name=key_name, attr_type=key_type)
 
         graph_elem = ET.SubElement(root, "graph", id="G", edgedefault="directed")
 

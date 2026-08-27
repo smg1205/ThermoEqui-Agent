@@ -58,9 +58,7 @@ def test_parameter_sources_include_parameter_set_identity() -> None:
 
 
 def test_mismatched_component_order_fails_as_missing_parameters() -> None:
-    parameter_set = nrtl_parameter_set().model_copy(
-        update={"component_order": ["water", "ethanol"]}
-    )
+    parameter_set = nrtl_parameter_set().model_copy(update={"component_order": ["water", "ethanol"]})
     task = task_with_parameters().model_copy(update={"parameters": [parameter_set]})
 
     with pytest.raises(ThermoEquiError) as captured:

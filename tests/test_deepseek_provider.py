@@ -458,8 +458,14 @@ async def test_deepseek_orchestration_rejects_invented_extra_component() -> None
         transport=httpx.MockTransport(respond),
     )
 
-    with pytest.raises(LLMProviderOutputError):
-        await ConversationOrchestrator(provider).chat("Calculate methane TP Flash at 150 K and 100 kPa.")
+    result = await ConversationOrchestrator(provider).chat("Calculate methane TP Flash at 150 K and 100 kPa.")
+
+    # The unsafe manifest is rejected and no calculation is executed: the chat
+    # returns a structured degradation response instead of raising.
+    assert result.task is None
+    assert result.calculation is None
+    assert "components inconsistent with the user message" in result.answer
+    assert result.statements and result.statements[0].category == "Warning"
 
 
 @pytest.mark.asyncio
@@ -512,8 +518,14 @@ async def test_deepseek_followup_cannot_silently_replace_inherited_components() 
     orchestrator = ConversationOrchestrator(provider)
     first = await orchestrator.chat("Calculate methane and ethane TP Flash at 150 K and 100 kPa.")
 
-    with pytest.raises(LLMProviderOutputError):
-        await orchestrator.chat("Change pressure to 200 kPa.", first.conversation_id)
+    second = await orchestrator.chat("Change pressure to 200 kPa.", first.conversation_id)
+
+    # The follow-up cannot silently replace inherited components: the change is
+    # rejected with a structured degradation response and nothing is executed.
+    assert second.task is None
+    assert second.calculation is None
+    assert "components inconsistent" in second.answer
+    assert second.statements and second.statements[0].category == "Warning"
 
 
 @pytest.mark.asyncio
@@ -546,8 +558,14 @@ async def test_deepseek_new_task_requires_component_identity_evidence() -> None:
         transport=httpx.MockTransport(respond),
     )
 
-    with pytest.raises(LLMProviderOutputError):
-        await ConversationOrchestrator(provider).chat("Calculate a TP Flash at 150 K and 100 kPa.")
+    result = await ConversationOrchestrator(provider).chat("Calculate a TP Flash at 150 K and 100 kPa.")
+
+    # A task with no independently resolvable component identity is rejected
+    # with a structured degradation response, not executed.
+    assert result.task is None
+    assert result.calculation is None
+    assert "No component identity could be resolved" in result.answer
+    assert result.statements and result.statements[0].category == "Warning"
 
 
 @pytest.mark.asyncio
@@ -580,8 +598,14 @@ async def test_deepseek_component_name_cannot_carry_another_compounds_cas() -> N
         transport=httpx.MockTransport(respond),
     )
 
-    with pytest.raises(LLMProviderOutputError):
-        await ConversationOrchestrator(provider).chat("Calculate the acetone bubble point at 101.325 kPa.")
+    result = await ConversationOrchestrator(provider).chat("Calculate the acetone bubble point at 101.325 kPa.")
+
+    # A component name carrying another compound's CAS is rejected with a
+    # structured degradation response, not executed.
+    assert result.task is None
+    assert result.calculation is None
+    assert "component name/CAS mismatch" in result.answer
+    assert result.statements and result.statements[0].category == "Warning"
 
 
 @pytest.mark.asyncio
@@ -614,8 +638,16 @@ async def test_deepseek_cannot_omit_external_component_from_mixed_system() -> No
         transport=httpx.MockTransport(respond),
     )
 
-    with pytest.raises(LLMProviderOutputError):
-        await ConversationOrchestrator(provider).chat("Calculate the acetone and benzene bubble point at 101.325 kPa.")
+    result = await ConversationOrchestrator(provider).chat(
+        "Calculate the acetone and benzene bubble point at 101.325 kPa."
+    )
+
+    # Omitting a component from a mixed system is rejected with a structured
+    # degradation response, not executed.
+    assert result.task is None
+    assert result.calculation is None
+    assert "components inconsistent with the user message" in result.answer
+    assert result.statements and result.statements[0].category == "Warning"
 
 
 @pytest.mark.asyncio
@@ -672,8 +704,14 @@ async def test_deepseek_requires_clarification_for_ambiguous_component_role(mess
         transport=httpx.MockTransport(respond),
     )
 
-    with pytest.raises(LLMProviderOutputError):
-        await ConversationOrchestrator(provider).chat(message)
+    result = await ConversationOrchestrator(provider).chat(message)
+
+    # Ambiguous component roles require clarification: the task is rejected
+    # with a structured degradation response and nothing is executed.
+    assert result.task is None
+    assert result.calculation is None
+    assert "ambiguous" in result.answer.casefold() or "clarification" in result.answer.casefold()
+    assert result.statements and result.statements[0].category == "Warning"
 
 
 @pytest.mark.asyncio

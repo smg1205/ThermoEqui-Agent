@@ -66,9 +66,12 @@ The following pieces are currently in place:
 | `Phasepy/Peng-Robinson` | `phasepy` | `available` | `false` | Optional external Peng-Robinson backend for VLE and flash |
 | `Clapeyron/Peng-Robinson` | `clapeyron` | `available` | `false` | Optional external Peng-Robinson backend for VLE and flash |
 | `SRK` | `thermo` | `available` | `false` | Pilot binary SRK VLE/flash requiring an explicit reviewed or user-attested kij ParameterSet; benchmark closure pending |
+| `RK` | `thermo` | `available` | `false` | Pilot binary Redlich-Kwong VLE/flash requiring an explicit reviewed or user-attested kij ParameterSet; benchmark closure pending |
+| `UNIFAC` | `thermo` | `available` | `false` | Predictive original UNIFAC pilot using DDBST group assignments; no binary ParameterSet required; benchmark closure pending |
 | `NRTL` | `internal` | `available` | `true` | Low-/moderate-pressure non-ideal VLE and flash for ChemSep-validated ethanol/water and ethanol/benzene binaries; legacy DECHEMA sets remain prototype |
 | `UNIQUAC` | `internal` | `available` | `true` | Low-/moderate-pressure non-ideal VLE and flash for ChemSep-validated ethanol/water and ethanol/benzene binaries; UNIQUAC benchmarks exclude pure endpoints |
 | `Wilson` | `internal` | `available` | `true` | Low-/moderate-pressure VLE and flash for ChemSep-validated ethanol/water and ethanol/benzene binaries; LLE is explicitly rejected |
+| `PGSSI` | `pgssi` | `available` | `false` | First-class predictive backend for temperature-dependent infinite-dilution activity coefficients (gamma-infinity) from SMILES; requires a trained checkpoint; benchmark closure pending |
 
 ## Current Filtering Rules
 
@@ -181,6 +184,70 @@ Current status:
 - `production_ready` is `true` for the ChemSep-validated ethanol/water and ethanol/benzene binaries benchmarked against experimental isobaric VLE data
 - Legacy DECHEMA parameter sets for other binaries remain available but are not yet production-validated
 
+### UNIFAC
+
+Applicable to:
+
+- Low- to moderate-pressure non-electrolyte VLE and flash screening
+- Multicomponent systems where DDBST UNIFAC group assignments are available
+- Cases where no reviewed binary interaction parameter set exists
+
+Rejected when:
+
+- A component has no DDBST group assignment or no CAS number
+- The requested calculation is outside the supported task scope
+- `LLE` is requested in the current pilot
+- The requested equilibrium type is otherwise unsupported
+
+Current status:
+
+- Predictive original UNIFAC backend is implemented and registered
+- `production_ready` is `false` until experimental benchmarks and applicability review are complete
+
+### RK
+
+Applicable to:
+
+- Moderate- to high-pressure hydrocarbon/light-gas binary VLE and flash
+- Systems with an explicit reviewed or user-attested RK kij `ParameterSet`
+
+Rejected when:
+
+- Required binary `kij` parameters are unavailable
+- More than two components are requested
+- `LLE` is requested
+- The requested equilibrium type is otherwise unsupported
+
+Current status:
+
+- Pilot `thermo.RKMIX` backend is implemented and registered
+- `production_ready` is `false` until reviewed kij coverage and benchmark closure are complete
+
+### PGSSI
+
+Applicable to:
+
+- Temperature-dependent infinite-dilution activity coefficient (gamma-infinity) prediction
+  from solute/solvent SMILES and temperature (`infinite_dilution_activity` calculation type)
+- Systems whose components carry SMILES identities
+
+Rejected when:
+
+- The requested calculation type is not `infinite_dilution_activity`
+- No trained PGSSI checkpoint is configured (`PGSSI_CHECKPOINT`)
+- The PGSSI source tree is not reachable (`PGSSI_SRC`)
+- torch / torch_geometric / rdkit are not installed
+- A component lacks a SMILES identity
+
+Current status:
+
+- First-class `PgssiBackend` implemented and registered next to NRTL/UNIQUAC/Wilson;
+  it is independent of binary `ParameterSet` records and no VLE backend depends on it
+- `production_ready` is `false` until experimental benchmark closure and applicability review
+- A gamma-infinity-to-NRTL parameter regression bridge (`thermo_engine/pgssi_params.py`) is
+  available as an optional auxiliary; regressed parameters require finite-concentration VLE
+  validation before production use
+
 ## Current Boundary
 
 The current boundary of this feature is intentionally narrow:
@@ -189,8 +256,8 @@ The current boundary of this feature is intentionally narrow:
 - This layer does not change backend execution logic even when a backend already exists in the codebase.
 - This document does not evaluate or summarize external traditional-model code quality.
 - This document does not describe unconfirmed AI model capabilities.
-- `SRK` is tracked as a pilot adapter; `production_ready` stays `false` until reviewed kij
-  coverage and benchmark closure are complete.
+- `SRK`, `RK`, and `UNIFAC` are tracked as pilot adapters; `production_ready` stays `false`
+  until reviewed parameters, benchmark closure, and applicability review are complete.
 
 Also intentionally out of scope for the current implementation:
 

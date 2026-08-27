@@ -19,6 +19,7 @@ CalculationType: TypeAlias = Literal[
     "phase_stability",
     "azeotrope",
     "lle",
+    "infinite_dilution_activity",
 ]
 RunStatus: TypeAlias = Literal["passed", "warning", "failed"]
 
@@ -47,6 +48,11 @@ _CALCULATION_TYPE_ALIASES: dict[str, CalculationType] = {
     "azeotrope_search": "azeotrope",
     "liquid_liquid_equilibrium": "lle",
     "lle": "lle",
+    "infinite_dilution_activity": "infinite_dilution_activity",
+    "infinite_dilution": "infinite_dilution_activity",
+    "gamma_infinity": "infinite_dilution_activity",
+    "gamma_inf": "infinite_dilution_activity",
+    "activity_coefficient_at_infinite_dilution": "infinite_dilution_activity",
 }
 
 
@@ -59,6 +65,7 @@ class Intent(StrEnum):
     RESULT_INTERPRETATION = "RESULT_INTERPRETATION"
     SENSITIVITY_ANALYSIS = "SENSITIVITY_ANALYSIS"
     PROCESS_RECOMMENDATION = "PROCESS_RECOMMENDATION"
+    FLOW_DESIGN_QA = "FLOW_DESIGN_QA"
     TASK_CORRECTION = "TASK_CORRECTION"
     UNSUPPORTED_TASK = "UNSUPPORTED_TASK"
 
@@ -79,6 +86,7 @@ class ComponentIdentity(BaseModel):
     component_id: str
     name: str
     cas_number: str | None = None
+    smiles: str | None = None
     aliases: list[str] = Field(default_factory=list)
 
 
@@ -88,6 +96,10 @@ class ThermodynamicConditions(BaseModel):
     liquid_composition: list[float] | None = None
     vapor_composition: list[float] | None = None
     feed_composition: list[float] | None = None
+    #: Optional low/high temperature bounds for curve-style calculations such as
+    #: PGSSI gamma-infinity(T).  When set together with ``points`` the backend
+    #: sweeps a curve; when absent, ``temperature_K`` is a single point.
+    temperature_span_K: tuple[float, float] | None = None
 
     @model_validator(mode="after")
     def validate_compositions(self) -> ThermodynamicConditions:
@@ -99,6 +111,10 @@ class ThermodynamicConditions(BaseModel):
                 raise ValueError(f"{label} must contain mole fractions in [0, 1]")
             if abs(sum(values) - 1.0) > 1e-8:
                 raise ValueError(f"{label} must sum to one within 1e-8")
+        if self.temperature_span_K is not None:
+            lower, upper = self.temperature_span_K
+            if lower <= 0 or upper <= lower:
+                raise ValueError("temperature_span_K must contain positive ascending bounds")
         return self
 
 
@@ -230,6 +246,20 @@ class EquilibriumPoint(BaseModel):
     equilibrium_residual: float
 
 
+class GammaInfinityPoint(BaseModel):
+    """One infinite-dilution activity coefficient datum at a temperature.
+
+    ``solute_index``/``solvent_index`` refer to the task component order; the
+    coefficient is for the solute at infinite dilution in the solvent.
+    """
+
+    temperature_K: float
+    solute_index: int = Field(ge=0)
+    solvent_index: int = Field(ge=0)
+    gamma_infinity: float = Field(gt=0)
+    ln_gamma_infinity: float
+
+
 class PhaseResult(BaseModel):
     phase: Literal["liquid", "vapor"]
     fraction: float = Field(ge=0, le=1)
@@ -244,6 +274,7 @@ class CalculationResult(BaseModel):
     model_name: str
     parameter_set_id: str | None = None
     points: list[EquilibriumPoint] = Field(default_factory=list)
+    gamma_infinity: list[GammaInfinityPoint] = Field(default_factory=list)
     phases: list[PhaseResult] = Field(default_factory=list)
     temperature_K: float | None = None
     pressure_kPa: float | None = None
@@ -286,6 +317,27 @@ class CalculationEnvelope(BaseModel):
     validation: ValidationReport
     parameter_sources: list[dict[str, str]] = Field(default_factory=list)
     model_recommendations: list[ModelRecommendation] = Field(default_factory=list)
+
+
+class ModelComparisonEntry(BaseModel):
+    model_name: str
+    score: float
+    executable: bool
+    result: CalculationResult | None = None
+    validation: ValidationReport | None = None
+    failure: FailureDetail | None = None
+    parameter_sources: list[dict[str, str]] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ModelComparisonResponse(BaseModel):
+    task: TaskManifest
+    entries: list[ModelComparisonEntry]
+    executed_count: int = Field(ge=0)
+    passed_count: int = Field(ge=0)
+    warning_count: int = Field(ge=0)
+    failed_count: int = Field(ge=0)
+    summary: str
 
 
 class ScoreBreakdown(BaseModel):
@@ -336,6 +388,136 @@ class AgentStep(BaseModel):
     tool_name: str | None = None
 
 
+FlowParameterSource: TypeAlias = Literal["LLM_SUGGESTED", "RULE_SUGGESTED", "VALIDATED"]
+
+_ALLOWED_UNIT_OPERATION_TYPES = frozenset(
+    {
+        "preheater",
+        "distillation_column",
+        "flash_drum",
+        "condenser",
+        "reboiler",
+        "heat_exchanger",
+        "mixer",
+        "splitter",
+    }
+)
+UnitOperationType: TypeAlias = Literal[
+    "preheater",
+    "distillation_column",
+    "flash_drum",
+    "condenser",
+    "reboiler",
+    "heat_exchanger",
+    "mixer",
+    "splitter",
+]
+
+
+class FlowParameter(BaseModel):
+    """A single parameter value attached to a feed or unit-operation slot.
+
+    Every value is explicitly labeled so consumers can distinguish validated
+    thermodynamic numbers from LLM/rule-based placeholders.
+    """
+
+    value: float | int | str
+    source: FlowParameterSource
+    needs_validation: bool = True
+    note: str | None = None
+
+
+class FlowFeed(BaseModel):
+    """Description of a single process feed stream."""
+
+    components: list[str] = Field(min_length=1)
+    composition_mole: list[float] = Field(default_factory=list)
+    temperature_K: float | None = Field(default=None, gt=0)
+    pressure_kPa: float | None = Field(default=None, gt=0)
+    flow_rate_mol_s: float | None = Field(default=None, gt=0)
+    assumption: str | None = None
+
+    @model_validator(mode="after")
+    def validate_composition(self) -> FlowFeed:
+        if not self.composition_mole:
+            return self
+        if len(self.composition_mole) != len(self.components):
+            raise ValueError("composition_mole must match components length")
+        if any(value < 0 or value > 1 for value in self.composition_mole):
+            raise ValueError("composition_mole mole fractions must be in [0, 1]")
+        if abs(sum(self.composition_mole) - 1.0) > 1e-6:
+            raise ValueError("composition_mole must sum to 1.0 (within 1e-6)")
+        return self
+
+
+class FlowUnitOperation(BaseModel):
+    """One unit operation in the designed flowsheet sequence.
+
+    The type vocabulary is intentionally narrow (white-listed) so downstream
+    exporters (DWSIM etc.) can map each node deterministically.
+    """
+
+    id: str = Field(min_length=1, max_length=64)
+    type: UnitOperationType
+    name: str = Field(min_length=1, max_length=256)
+    input_stream: str | None = None
+    output_streams: dict[str, str] = Field(default_factory=dict)
+    conditions: dict[str, FlowParameter] = Field(default_factory=dict)
+
+    @field_validator("id", "name", "input_stream")
+    @classmethod
+    def strip_strings(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+
+class FlowProductSpec(BaseModel):
+    """Named product purity or recovery requirement on a stream."""
+
+    stream: str = Field(min_length=1)
+    spec: str = Field(min_length=1)
+
+
+class FlowDesignDraft(BaseModel):
+    """Structured process-flow design draft produced by a skill.
+
+    The draft is always a non-final recommendation: every parameter that can
+    be verified against a deterministic thermodynamics engine carries an
+    explicit ``needs_validation`` label. Backends (DWSIM export, column
+    design) consume this schema instead of ad-hoc dictionaries.
+    """
+
+    flow_name: str = Field(min_length=1, max_length=512)
+    flow_type: str = Field(default="custom", max_length=128)
+    feed: FlowFeed
+    unit_operations: list[FlowUnitOperation] = Field(min_length=1)
+    streams_connectivity_note: str | None = None
+    thermodynamic_model: str | None = Field(default=None, max_length=128)
+    model_recommendation_note: str | None = None
+    product_specs: list[FlowProductSpec] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+    model_config = ConfigDict(use_attribute_docstrings=False)
+
+    @field_validator("unit_operations")
+    @classmethod
+    def validate_unique_ids(cls, units: list[FlowUnitOperation]) -> list[FlowUnitOperation]:
+        seen_ids: set[str] = set()
+        for unit in units:
+            if unit.type not in _ALLOWED_UNIT_OPERATION_TYPES:
+                raise ValueError(
+                    f"unit_operations type {unit.type!r} is not allowed; "
+                    f"use one of {sorted(_ALLOWED_UNIT_OPERATION_TYPES)}"
+                )
+            if unit.id in seen_ids:
+                raise ValueError(f"unit_operations contains duplicate id {unit.id!r}")
+            seen_ids.add(unit.id)
+        return units
+
+
 class ChatResponse(BaseModel):
     conversation_id: str
     intent: Intent
@@ -344,6 +526,11 @@ class ChatResponse(BaseModel):
     execution_steps: list[AgentStep] = Field(default_factory=list)
     task: TaskManifest | None = None
     calculation: CalculationEnvelope | None = None
+    #: Structured process-flow design payload when ``intent`` is
+    #: :py:attr:`Intent.FLOW_DESIGN_QA`. Other modules (DWSIM export,
+    #: downstream flowsheet tooling) should read this field instead of
+    #: re-parsing the natural-language ``answer``.
+    flow_design: FlowDesignDraft | None = None
     request_id: str | None = None
 
 

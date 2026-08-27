@@ -40,7 +40,7 @@ class KnowledgeRetriever:
                 self.splitter = SemanticSplitter(self.embedder)
                 logger.info("使用语义分割器 (SemanticSplitter)")
             except Exception as e:
-                warnings.warn(f"语义分割器初始化失败，回退到 MarkdownSplitter: {e}")
+                warnings.warn(f"语义分割器初始化失败，回退到 MarkdownSplitter: {e}", stacklevel=2)
                 self.splitter = MarkdownSplitter()
         else:
             self.splitter = splitter

@@ -1,14 +1,30 @@
 """Shared utilities for activity-coefficient-based VLE calculations (NRTL/UNIQUAC/Wilson)."""
+
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 import numpy as np
 from scipy.optimize import brentq
 
-from schemas.domain import CalculationResult, EquilibriumPoint, FailureType, PhaseResult, TaskManifest
+from schemas.domain import (
+    CalculationResult,
+    EquilibriumPoint,
+    FailureDetail,
+    FailureType,
+    PhaseResult,
+    TaskManifest,
+)
 from thermo_engine.errors import ThermoEquiError
+
+GammaFunction = Callable[
+    [np.ndarray[Any, Any], float, list[str], dict[str, Any] | None],
+    np.ndarray[Any, Any],
+]
 
 # Antoine constants: log10(P[mmHg]) = A - B/(C + T[C]), source: NIST
 NIST_ANTOINE: dict[str, tuple[float, float, float, float, float]] = {
@@ -30,11 +46,12 @@ def psat_Pa(component_name: str, T_K: float) -> float:
     key = component_name.lower().strip()
     if key not in NIST_ANTOINE:
         from thermo import Chemical
+
         chem = Chemical(key)
-        return chem.VaporPressure(T_K) * 1e5  # bar -> Pa
+        return float(chem.VaporPressure(T_K) * 1e5)  # bar -> Pa
     A, B, C, _, _ = NIST_ANTOINE[key]
     T_C = T_K - 273.15
-    return (10.0 ** (A - B / (C + T_C))) * 133.322
+    return float((10.0 ** (A - B / (C + T_C))) * 133.322)
 
 
 def component_names(request: TaskManifest) -> list[str]:
@@ -55,15 +72,22 @@ def require_composition(request: TaskManifest, field: str, n: int) -> list[float
         raise ThermoEquiError(FailureType.MISSING_DATA, f"{field} required.", f"Provide {field}.")
     if len(comp) != n:
         raise ThermoEquiError(FailureType.SEMANTIC_FAILURE, f"{field} length mismatch.", "Check composition length.")
-    return comp
+    return [float(value) for value in comp]
 
 
-def gamma_nrtl(xs: np.ndarray, T: float, names: list[str], params: dict | None) -> np.ndarray:
+def gamma_nrtl(
+    xs: np.ndarray[Any, Any],
+    T: float,
+    names: list[str],
+    params: dict[str, Any] | None,
+) -> np.ndarray[Any, Any]:
     """Compute NRTL activity coefficients using thermo."""
     from thermo import NRTL
+
     if params is None:
-        raise ThermoEquiError(FailureType.MISSING_PARAMETERS, "NRTL needs tau_coeffs.",
-                              "Provide binary interaction parameters.")
+        raise ThermoEquiError(
+            FailureType.MISSING_PARAMETERS, "NRTL needs tau_coeffs.", "Provide binary interaction parameters."
+        )
     tau = np.array(params.get("tau_coeffs", np.zeros((len(names), len(names), 6))))
     alpha = np.array(params.get("alpha_coeffs", np.zeros((len(names), len(names), 2))))
     if alpha.sum() == 0:
@@ -77,12 +101,19 @@ def gamma_nrtl(xs: np.ndarray, T: float, names: list[str], params: dict | None) 
     return np.array(model.gammas())
 
 
-def gamma_uniqac(xs: np.ndarray, T: float, names: list[str], params: dict | None) -> np.ndarray:
+def gamma_uniqac(
+    xs: np.ndarray[Any, Any],
+    T: float,
+    names: list[str],
+    params: dict[str, Any] | None,
+) -> np.ndarray[Any, Any]:
     """Compute UNIQUAC activity coefficients using thermo."""
     from thermo import UNIQUAC
+
     if params is None:
-        raise ThermoEquiError(FailureType.MISSING_PARAMETERS, "UNIQUAC needs tau_coeffs.",
-                              "Provide binary interaction parameters.")
+        raise ThermoEquiError(
+            FailureType.MISSING_PARAMETERS, "UNIQUAC needs tau_coeffs.", "Provide binary interaction parameters."
+        )
     tau = np.array(params.get("tau_coeffs", np.zeros((len(names), len(names), 6))))
     rs = np.array(params.get("rs", [1.0] * len(names)))
     qs = np.array(params.get("qs", [1.0] * len(names)))
@@ -90,25 +121,42 @@ def gamma_uniqac(xs: np.ndarray, T: float, names: list[str], params: dict | None
     return np.array(model.gammas())
 
 
-def gamma_wilson(xs: np.ndarray, T: float, names: list[str], params: dict | None) -> np.ndarray:
+def gamma_wilson(
+    xs: np.ndarray[Any, Any],
+    T: float,
+    names: list[str],
+    params: dict[str, Any] | None,
+) -> np.ndarray[Any, Any]:
     """Compute Wilson activity coefficients using thermo."""
     from thermo import Wilson
+
     if params is None:
-        raise ThermoEquiError(FailureType.MISSING_PARAMETERS, "Wilson needs Lambda_coeffs.",
-                              "Provide binary interaction parameters.")
+        raise ThermoEquiError(
+            FailureType.MISSING_PARAMETERS, "Wilson needs Lambda_coeffs.", "Provide binary interaction parameters."
+        )
     lmbda = np.array(params.get("Lambda_coeffs", np.zeros((len(names), len(names), 6))))
     model = Wilson(xs=xs, T=T, lambda_coeffs=lmbda)
     return np.array(model.gammas())
 
 
 def build_result(
-    request, model_name, backend_version, *, points=None, phases=None,
-    T=None, P=None, vf=None, phase_state="unknown", residual=0.0, iters=0, warnings=None,
-    failure=None,
+    request: TaskManifest,
+    model_name: str,
+    backend_version: str,
+    *,
+    points: list[EquilibriumPoint] | None = None,
+    phases: list[PhaseResult] | None = None,
+    T: float | None = None,
+    P: float | None = None,
+    vf: float | None = None,
+    phase_state: str = "unknown",
+    residual: float = 0.0,
+    iters: int = 0,
+    warnings: list[str] | None = None,
+    failure: FailureDetail | None = None,
+    solver_name: str = "activity-coefficient VLE",
 ) -> CalculationResult:
     """Build a CalculationResult following the existing pattern."""
-    from datetime import datetime, UTC
-    from uuid import uuid4
     return CalculationResult(
         run_id=str(uuid4()),
         task_id=request.task_id,
@@ -127,7 +175,7 @@ def build_result(
         iterations=iters,
         warnings=list(dict.fromkeys(warnings or [])),
         backend_version=backend_version,
-        solver_name="activity-coefficient VLE",
+        solver_name=solver_name,
         failure=failure,
         created_at=datetime.now(UTC),
     )
@@ -145,53 +193,75 @@ def temperature_bounds(names: list[str], P_kPa: float) -> tuple[float, float]:
                 Tb = B / (A - math.log10(P_mmHg)) - C + 273.15
                 lows.append(Tb - 20)
                 highs.append(Tb + 20)
-            except: pass
+            except (ValueError, OverflowError):
+                pass
     if not lows:
         return 250.0, 500.0
     return min(lows), max(highs)
 
 
-def vle_bubble(P_kPa: float, names: list[str], xs: list[float],
-               gamma_fn, params, solver_tol=1e-9) -> tuple[float, list[float], list[float], int]:
+def vle_bubble(
+    P_kPa: float,
+    names: list[str],
+    xs: list[float],
+    gamma_fn: GammaFunction,
+    params: dict[str, Any] | None,
+    solver_tol: float = 1e-9,
+) -> tuple[float, list[float], list[float], int]:
     """Bubble point: given P, x -> find T, y."""
     low, high = temperature_bounds(names, P_kPa)
     P_Pa = P_kPa * 1000.0
 
-    def f(T):
+    def f(T: float) -> float:
         g = gamma_fn(np.array(xs), T, names, params)
         ys = [xs[i] * g[i] * psat_Pa(names[i], T) / P_Pa for i in range(len(names))]
-        return sum(ys) - 1.0
+        return float(sum(ys) - 1.0)
 
     try:
         T_sol, info = brentq(f, low, high, xtol=solver_tol, full_output=True, maxiter=200)
     except (ValueError, RuntimeError) as e:
-        raise ThermoEquiError(FailureType.NUMERICAL_NONCONVERGENCE,
-            "Bubble point did not converge.", "Check temperature bounds and parameters.") from e
+        raise ThermoEquiError(
+            FailureType.NUMERICAL_NONCONVERGENCE,
+            "Bubble point did not converge.",
+            "Check temperature bounds and parameters.",
+        ) from e
     g = gamma_fn(np.array(xs), T_sol, names, params)
     ys = [xs[i] * g[i] * psat_Pa(names[i], T_sol) / P_Pa for i in range(len(names))]
     return T_sol, ys, g.tolist(), int(info.iterations)
 
 
-def vle_dew(P_kPa: float, names: list[str], ys: list[float],
-            gamma_fn, params, solver_tol=1e-9) -> tuple[float, list[float], list[float], int]:
+def vle_dew(
+    P_kPa: float,
+    names: list[str],
+    ys: list[float],
+    gamma_fn: GammaFunction,
+    params: dict[str, Any] | None,
+    solver_tol: float = 1e-9,
+) -> tuple[float, list[float], list[float], int]:
     """Dew point: given P, y -> find T, x."""
     low, high = temperature_bounds(names, P_kPa)
     P_Pa = P_kPa * 1000.0
 
-    def f(T):
+    def f(T: float) -> float:
         xs = [ys[i] * P_Pa / psat_Pa(names[i], T) for i in range(len(names))]
         s = sum(xs)
         xs_n = [x / s for x in xs]
         g = gamma_fn(np.array(xs_n), T, names, params)
         xs2 = [ys[i] * P_Pa / (g[i] * psat_Pa(names[i], T)) for i in range(len(names))]
-        return sum(xs2) - 1.0
+        return float(sum(xs2) - 1.0)
 
     try:
         T_sol, info = brentq(f, low, high, xtol=solver_tol, full_output=True, maxiter=200)
     except (ValueError, RuntimeError) as e:
-        raise ThermoEquiError(FailureType.NUMERICAL_NONCONVERGENCE,
-            "Dew point did not converge.", "Check temperature bounds and parameters.") from e
-    g = gamma_fn(np.array(xs), T_sol, names, params)
+        raise ThermoEquiError(
+            FailureType.NUMERICAL_NONCONVERGENCE,
+            "Dew point did not converge.",
+            "Check temperature bounds and parameters.",
+        ) from e
+    initial_xs = [ys[i] * P_Pa / psat_Pa(names[i], T_sol) for i in range(len(names))]
+    initial_sum = sum(initial_xs)
+    xs_n = [x / initial_sum for x in initial_xs]
+    g = gamma_fn(np.array(xs_n), T_sol, names, params)
     xs = [ys[i] * P_Pa / (g[i] * psat_Pa(names[i], T_sol)) for i in range(len(names))]
     s = sum(xs)
     xn = [x / s for x in xs]

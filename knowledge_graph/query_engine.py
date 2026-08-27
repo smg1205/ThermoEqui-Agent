@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import Any
 
 from knowledge_graph.entity_extractor import Entity, EntityExtractor, ThermoEntityExtractor
@@ -29,7 +28,6 @@ class GraphQueryEngine:
         self.graph = graph or KnowledgeGraph()
         self.entity_extractor = entity_extractor or ThermoEntityExtractor()
 
-    @lru_cache(maxsize=128)
     def cached_query(self, question: str) -> GraphQueryResult:
         """带缓存的高频查询接口"""
         return self.query(question)
@@ -121,7 +119,13 @@ class GraphQueryEngine:
 
         return None
 
-    def _generate_answer(self, question: str, entities: list[Entity], nodes: list[dict], relationships: list[dict]) -> str | None:
+    def _generate_answer(
+        self,
+        question: str,
+        entities: list[Entity],
+        nodes: list[dict],
+        relationships: list[dict],
+    ) -> str | None:
         """基于规则生成自然语言答案（可扩展）"""
         lower_question = question.lower()
         model_nodes = [n for n in nodes if n["type"] == "model"]
@@ -209,6 +213,6 @@ class GraphQueryEngine:
         return models
 
     @classmethod
-    def from_loaded_graph(cls) -> "GraphQueryEngine":
+    def from_loaded_graph(cls) -> GraphQueryEngine:
         graph = KnowledgeGraph.load()
         return cls(graph=graph)

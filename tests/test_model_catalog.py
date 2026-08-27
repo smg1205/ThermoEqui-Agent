@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
 import pytest
 from pydantic import ValidationError
@@ -14,16 +13,20 @@ EXPECTED_NAMES = {
     "Phasepy/Peng-Robinson",
     "Clapeyron/Peng-Robinson",
     "SRK",
+    "RK",
+    "UNIFAC",
     "Wilson",
     "NRTL",
     "UNIQUAC",
+    "PGSSI",
+    "GHGEAT",
 }
 
 
 def test_real_model_catalog_yaml_files_all_load() -> None:
     catalog = load_model_catalog()
 
-    assert len(catalog) == 8
+    assert len(catalog) == 12
     assert set(catalog) == EXPECTED_NAMES
 
 
@@ -86,27 +89,23 @@ def test_activity_coefficient_catalog_entries_do_not_claim_executable_lle_suppor
         assert "lle" not in catalog[name].supported_calculation_types
 
 
-def test_empty_yaml_raises_value_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    with TemporaryDirectory(dir=Path.cwd()) as temp_dir:
-        temp_path = Path(temp_dir)
-        (temp_path / "empty.yaml").write_text("", encoding="utf-8")
-        monkeypatch.setattr("thermo_engine.model_catalog.catalog_directory", lambda: temp_path)
+def test_empty_yaml_raises_value_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    (tmp_path / "empty.yaml").write_text("", encoding="utf-8")
+    monkeypatch.setattr("thermo_engine.model_catalog.catalog_directory", lambda: tmp_path)
 
-        with pytest.raises(ValueError, match="is empty"):
-            load_model_catalog()
+    with pytest.raises(ValueError, match="is empty"):
+        load_model_catalog()
 
 
-def test_top_level_list_yaml_raises_value_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    with TemporaryDirectory(dir=Path.cwd()) as temp_dir:
-        temp_path = Path(temp_dir)
-        (temp_path / "list.yaml").write_text("- not\n- a\n- mapping\n", encoding="utf-8")
-        monkeypatch.setattr("thermo_engine.model_catalog.catalog_directory", lambda: temp_path)
+def test_top_level_list_yaml_raises_value_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    (tmp_path / "list.yaml").write_text("- not\n- a\n- mapping\n", encoding="utf-8")
+    monkeypatch.setattr("thermo_engine.model_catalog.catalog_directory", lambda: tmp_path)
 
-        with pytest.raises(ValueError, match="top-level YAML mapping"):
-            load_model_catalog()
+    with pytest.raises(ValueError, match="top-level YAML mapping"):
+        load_model_catalog()
 
 
-def test_duplicate_name_raises_value_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_duplicate_name_raises_value_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     first = """\
 name: Duplicate
 aliases: []
@@ -143,17 +142,15 @@ scope_notes: []
 optional_dependency:
 source_refs: []
 """
-    with TemporaryDirectory(dir=Path.cwd()) as temp_dir:
-        temp_path = Path(temp_dir)
-        (temp_path / "a.yaml").write_text(first, encoding="utf-8")
-        (temp_path / "b.yaml").write_text(second, encoding="utf-8")
-        monkeypatch.setattr("thermo_engine.model_catalog.catalog_directory", lambda: temp_path)
+    (tmp_path / "a.yaml").write_text(first, encoding="utf-8")
+    (tmp_path / "b.yaml").write_text(second, encoding="utf-8")
+    monkeypatch.setattr("thermo_engine.model_catalog.catalog_directory", lambda: tmp_path)
 
-        with pytest.raises(ValueError, match="Duplicate model catalog entry name"):
-            load_model_catalog()
+    with pytest.raises(ValueError, match="Duplicate model catalog entry name"):
+        load_model_catalog()
 
 
-def test_unknown_field_raises_validation_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_unknown_field_raises_validation_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     content = """\
 name: Test Entry
 aliases: []
@@ -173,10 +170,8 @@ optional_dependency:
 source_refs: []
 unexpected_field: should_fail
 """
-    with TemporaryDirectory(dir=Path.cwd()) as temp_dir:
-        temp_path = Path(temp_dir)
-        (temp_path / "invalid.yaml").write_text(content, encoding="utf-8")
-        monkeypatch.setattr("thermo_engine.model_catalog.catalog_directory", lambda: temp_path)
+    (tmp_path / "invalid.yaml").write_text(content, encoding="utf-8")
+    monkeypatch.setattr("thermo_engine.model_catalog.catalog_directory", lambda: tmp_path)
 
-        with pytest.raises(ValidationError):
-            load_model_catalog()
+    with pytest.raises(ValidationError):
+        load_model_catalog()

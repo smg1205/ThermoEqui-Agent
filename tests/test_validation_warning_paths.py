@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from schemas.domain import CalculationResult, EquilibriumPoint, PhaseResult, ThermodynamicConditions
+from schemas.domain import CalculationResult, EquilibriumPoint, PhaseResult
 from thermo_engine.validation import validate_result
 
 

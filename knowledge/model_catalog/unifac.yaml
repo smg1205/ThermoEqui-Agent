@@ -1,0 +1,46 @@
+name: UNIFAC
+aliases:
+  - unifac
+family: activity_coefficient
+backend: thermo
+implementation_status: available
+production_ready: false
+supported_equilibrium_types:
+  - VLE
+  - FLASH
+supported_calculation_types:
+  - bubble_point
+  - dew_point
+  - isobaric_vle
+  - isothermal_vle
+  - tp_flash
+  - phase_stability
+  - azeotrope
+excluded_systems:
+  - electrolyte
+  - reactive
+  - SLE
+  - polymer
+  - hydrate
+  - petroleum_pseudocomponent
+  - VLLE
+pressure_regime:
+  - low
+  - moderate
+requires_binary_parameters: false
+parameter_requirements:
+  - DDBST UNIFAC group assignment for every component
+  - Original UNIFAC interaction parameter table shipped with CalebBell/thermo
+validation_requirements:
+  - composition_balance
+  - fugacity_equality
+  - phase_stability
+scope_notes:
+  - Predictive original UNIFAC pilot using DDBST group assignments; no binary ParameterSet is required.
+  - production_ready remains false until experimental benchmarks and applicability review are complete.
+optional_dependency:
+source_refs:
+  - knowledge/model_cards/unifac.yaml
+  - thermo_engine/registry.py
+  - thermo_engine/unifac_backend.py
+  - tests/test_unifac_backend.py

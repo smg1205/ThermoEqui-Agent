@@ -1,0 +1,9 @@
+model_name: UNIFAC
+family: activity_coefficient
+supported_tasks: [VLE, FLASH]
+excluded_systems: [electrolyte, reactive, SLE, polymer, hydrate, petroleum_pseudocomponent, VLLE]
+requires_binary_parameters: false
+pressure_regime: [low, moderate]
+validation_requirements: [composition_balance, fugacity_equality, phase_stability]
+implementation_status: available
+production_ready: false

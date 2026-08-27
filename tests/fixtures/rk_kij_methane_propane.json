@@ -1,0 +1,18 @@
+{
+  "parameter_set_id": "test-fixture-rk-kij-methane-propane",
+  "model_name": "RK",
+  "component_order": ["74-82-8", "74-98-6"],
+  "parameters": {
+    "kij": 0.05
+  },
+  "parameter_form": "RK kij",
+  "units": {
+    "kij": "dimensionless"
+  },
+  "temperature_range_K": [130.0, 320.0],
+  "pressure_range_kPa": [100.0, 5000.0],
+  "equilibrium_types": ["VLE", "FLASH"],
+  "source_type": "test_fixture",
+  "quality_level": "synthetic-test-fixture",
+  "notes": "Synthetic RK kij for public-seam tests; not engineering evidence."
+}

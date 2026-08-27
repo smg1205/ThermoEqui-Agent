@@ -14,9 +14,13 @@ def test_load_model_cards_contains_expected_models() -> None:
         "Phasepy/Peng-Robinson",
         "Clapeyron/Peng-Robinson",
         "SRK",
+        "RK",
+        "UNIFAC",
         "Wilson",
         "NRTL",
         "UNIQUAC",
+        "PGSSI",
+        "GHGEAT",
     }
 
 

@@ -1,9 +1,9 @@
 """Graph builder that integrates with existing RAG knowledge base (YAML rules)."""
 
 import logging
-import yaml
 from pathlib import Path
-from typing import Any
+
+import yaml
 
 from knowledge_graph.graph import KnowledgeGraph
 
@@ -29,7 +29,7 @@ class GraphBuilder:
         model_cards = []
         for yaml_path in yaml_files:
             try:
-                with open(yaml_path, "r", encoding="utf-8") as f:
+                with open(yaml_path, encoding="utf-8") as f:
                     data = yaml.safe_load(f)
                 cards = self._extract_model_cards(data, source=str(yaml_path.relative_to(KNOWLEDGE_ROOT)))
                 if cards:

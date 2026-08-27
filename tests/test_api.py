@@ -104,6 +104,35 @@ def test_chat_persists_real_run_and_exports_json_and_csv() -> None:
         assert task_row.conversation_id == payload["conversation_id"]
 
 
+def test_run_can_be_exported_as_a_dwsim_flowsheet(monkeypatch: pytest.MonkeyPatch) -> None:
+    def write_dwsim_file(run: object, destination: Path) -> Path:
+        destination.write_bytes(b"dwsim-flowsheet")
+        return destination
+
+    monkeypatch.setattr(api_module, "export_dwsim_flowsheet", write_dwsim_file)
+    with client() as test_client:
+        response = test_client.post(
+            "/api/calculations/isobaric-vle",
+            json={
+                "equilibrium_type": "VLE",
+                "calculation_type": "isobaric_vle",
+                "components": [
+                    {"component_id": "benzene", "name": "Benzene"},
+                    {"component_id": "toluene", "name": "Toluene"},
+                ],
+                "conditions": {"pressure_kPa": 101.325},
+                "model_name": "Ideal/Raoult",
+                "points": 3,
+            },
+        )
+        assert response.status_code == 200
+        run_id = response.json()["result"]["run_id"]
+        exported = test_client.get(f"/api/runs/{run_id}/export?format=dwsim")
+    assert exported.status_code == 200
+    assert exported.content == b"dwsim-flowsheet"
+    assert exported.headers["content-disposition"].endswith(f'filename="{run_id}.dwxmz"')
+
+
 def test_direct_calculation_persists_its_task_manifest() -> None:
     task = {
         "equilibrium_type": "VLE",
@@ -529,3 +558,45 @@ def test_malformed_deepseek_envelope_returns_sanitized_fallback_response(
     assert payload["statements"]
     assert payload["statements"][0]["category"] == "Warning"
     assert "upstream-private-content" not in response.text
+
+
+def test_infinite_dilution_activity_endpoint_fails_structurally_without_checkpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("PGSSI_CHECKPOINT", raising=False)
+
+    with client() as test_client:
+        response = test_client.post(
+            "/api/calculations/infinite-dilution-activity",
+            json={
+                "equilibrium_type": "VLE",
+                "calculation_type": "infinite_dilution_activity",
+                "components": [
+                    {
+                        "component_id": "ethanol",
+                        "name": "ethanol",
+                        "cas_number": "64-17-5",
+                        "smiles": "CCO",
+                        "aliases": [],
+                    },
+                    {
+                        "component_id": "water",
+                        "name": "water",
+                        "cas_number": "7732-18-5",
+                        "smiles": "O",
+                        "aliases": [],
+                    },
+                ],
+                "conditions": {"temperature_K": 298.15},
+                "composition_basis": "mole_fraction",
+                "requested_outputs": ["table", "validation"],
+                "validation_requirements": ["composition_balance", "equilibrium_residual", "convergence"],
+                "assumptions": [],
+                "points": 21,
+                "parameters": [],
+            },
+        )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "missing_parameters"
+    assert "checkpoint" in response.json()["error"]["message"].casefold()

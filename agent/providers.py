@@ -25,7 +25,14 @@ class LLMProvider(Protocol):
         available_tools: list[dict[str, str]],
     ) -> str: ...
 
-    async def answer_with_evidence(self, message: str, strict: bool = False) -> list[EvidenceStatement]: ...
+    async def answer_with_evidence(
+        self,
+        message: str,
+        strict: bool = False,
+        grounded_numbers: set[str] | None = None,
+        *,
+        intent_label: str | None = None,
+    ) -> list[EvidenceStatement]: ...
 
     async def interpret_result(self, result: dict[str, object]) -> list[EvidenceStatement]: ...
 
@@ -159,23 +166,71 @@ _NON_REQUEST_CALCULATION_PREFIX = re.compile(
     r"(?:计算|推算)(?:得到|得出|显示|表明|结果|可知|可见)"
 )
 
+#: Property keywords whose value can only come from a deterministic backend.
+_GAMMA_INFINITY_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "无限稀释",
+        "无限稀",
+        "γ∞",
+        "γinf",
+        "gamma infinity",
+        "gamma-infinity",
+        "gamma_inf",
+        "infinite dilution",
+    }
+)
+
+#: "how much is X" question forms that request a numeric value.
+_NUMERIC_QUESTION_WORDS: frozenset[str] = frozenset(
+    {
+        "是多少",
+        "多少",
+        "数值",
+        "值是多少",
+        "为多少",
+    }
+)
+
 
 def _is_thermo_question(question: str) -> bool:
     lower = question.casefold()
     return any(kw.casefold() in lower for kw in _THERMO_QA_KEYWORDS)
 
 
+_JUDGMENT_QUESTION_PATTERN = re.compile(
+    r"(?:可以|能|应该|是否|适不适合|合不合适|能不能|可不可以)"
+    r".*(?:计算|适用|可行|使用|采用)"
+    r".*(?:吗|呢|？|\?)"
+)
+_MODEL_SUITABILITY_PATTERN = re.compile(
+    r"(?:可以用|能用|适用|合适|应该选|应该用|选什么)"
+    r".*(?:定律|模型|方程|方法)"
+)
+
+
 def _is_calculation_question(question: str) -> bool:
     lower = question.casefold()
+    if any(kw.casefold() in lower for kw in _GAMMA_INFINITY_KEYWORDS):
+        return True
+    if _JUDGMENT_QUESTION_PATTERN.search(lower):
+        return False
+    if _MODEL_SUITABILITY_PATTERN.search(lower) and ("吗" in lower or "呢" in lower or "?" in lower or "？" in lower):
+        return False
     if any(kw.casefold() in lower for kw in _CALCULATION_KEYWORDS):
         return True
     if _CALCULATION_REQUEST_PATTERN.search(question):
         if not _NON_REQUEST_CALCULATION_PREFIX.search(question):
             return True
+    if any(word in lower for word in _NUMERIC_QUESTION_WORDS) and _is_thermo_question(question):
+        return True
     return False
 
 
-def _contains_ungrounded_claim(text: str, check_numbers: bool = True) -> bool:
+def _contains_ungrounded_claim(
+    text: str,
+    check_numbers: bool = True,
+    grounded_numbers: set[str] | None = None,
+) -> bool:
     """Only check external references for calculation questions.
 
     Concept Q&A (e.g. 'what is activity coefficient') should allow
@@ -183,11 +238,24 @@ def _contains_ungrounded_claim(text: str, check_numbers: bool = True) -> bool:
     knowledge references, not fabricated data. Only calculation tasks
     must be strict: any number or citation not from thermo_engine is
     potentially fabricated.
+
+    When grounded_numbers is provided, those specific numeric strings
+    (which come from prior validated calculation results via memory)
+    are considered safe and will not trigger the ungrounded check.
     """
-    if check_numbers:
-        if _EXTERNAL_REFERENCE.search(text):
-            return True
-        return bool(_NUMERIC_TOKEN.search(text))
+    grounded = grounded_numbers or set()
+    if _EXTERNAL_REFERENCE.search(text):
+        return True
+    if not check_numbers:
+        return False
+    for match in _NUMERIC_TOKEN.finditer(text):
+        value = match.group(0)
+        if value in grounded:
+            continue
+        stripped = value.rstrip(".")
+        if stripped in grounded:
+            continue
+        return True
     return False
 
 
@@ -327,19 +395,45 @@ class ConstrainedLLMProvider:
                 )
         raise LLMProviderOutputError("External provider returned an invalid task manifest.")
 
-    async def answer_with_evidence(self, message: str, strict: bool = False) -> list[EvidenceStatement]:
+    async def answer_with_evidence(
+        self,
+        message: str,
+        strict: bool = False,
+        grounded_numbers: set[str] | None = None,
+        *,
+        intent_label: str | None = None,
+    ) -> list[EvidenceStatement]:
         value = await self._request(
             "Answer concise thermodynamics knowledge questions without fabricating numerical data or citations. "
             "Do not cite any source. Prefix every paragraph with Knowledge:, Inference:, or Warning:.",
             message,
         )
-        if strict and _contains_ungrounded_claim(value):
+        if strict and _contains_ungrounded_claim(value, grounded_numbers=grounded_numbers):
             return [EvidenceStatement(category="Warning", text=_WITHHELD_TEXT)]
-        # Only check for calculation questions, not concept Q&A
-        if _is_thermo_question(message) and _is_calculation_question(message):
-            if _contains_ungrounded_claim(value, check_numbers=True):
+        # Treat truly-calculation intents (EQUILIBRIUM_CALCULATION, TASK_CORRECTION)
+        # as strict (check_numbers on ungrounded tokens).
+        # Concept/compare/interpret intents (CONCEPT_QA, MODEL_SELECTION_QA,
+        # RESULT_INTERPRETATION) are not calculation requests - they interpret
+        # prior results, so derived numbers (differences, ratios) are acceptable.
+        strict_calc_intents = {"EQUILIBRIUM_CALCULATION", "TASK_CORRECTION", "FLASH_CALCULATION"}
+        relaxed_intents = {
+            "CONCEPT_QA",
+            "MODEL_SELECTION_QA",
+            "RESULT_INTERPRETATION",
+            "PROCESS_RECOMMENDATION",
+            "SENSITIVITY_ANALYSIS",
+            "FLOW_DESIGN_QA",
+        }
+        if intent_label and intent_label.upper() in strict_calc_intents:
+            check_numbers = True
+        elif intent_label and intent_label.upper() in relaxed_intents:
+            check_numbers = False
+        else:
+            check_numbers = _is_thermo_question(message) and _is_calculation_question(message)
+        if check_numbers:
+            if _contains_ungrounded_claim(value, check_numbers=True, grounded_numbers=grounded_numbers):
                 return [EvidenceStatement(category="Warning", text=_WITHHELD_TEXT)]
-        if _contains_ungrounded_claim(value):
+        if _contains_ungrounded_claim(value, grounded_numbers=grounded_numbers):
             value += "\n\n（以上涉及数值未经确定性引擎验证，请以计算结果为准。）"
         return [EvidenceStatement(category="Knowledge", text=value)]
 
@@ -453,7 +547,14 @@ class DeepSeekProvider(ConstrainedLLMProvider):
         )
         return [EvidenceStatement(category="Inference", text=value)]
 
-    async def answer_with_evidence(self, message: str, strict: bool = False) -> list[EvidenceStatement]:
+    async def answer_with_evidence(
+        self,
+        message: str,
+        strict: bool = False,
+        grounded_numbers: set[str] | None = None,
+        *,
+        intent_label: str | None = None,
+    ) -> list[EvidenceStatement]:
         """Override: answer both thermodynamics knowledge and general questions."""
         value = await self._request(
             "Answer the user's question concisely and helpfully. "
@@ -462,13 +563,28 @@ class DeepSeekProvider(ConstrainedLLMProvider):
             "Do not cite external sources. Keep answers informative.",
             message,
         )
-        if strict and _contains_ungrounded_claim(value):
+        if strict and _contains_ungrounded_claim(value, grounded_numbers=grounded_numbers):
             return [EvidenceStatement(category="Warning", text=_WITHHELD_TEXT)]
-        if _is_thermo_question(message):
-            check_numbers = _is_calculation_question(message)
-            if _contains_ungrounded_claim(value, check_numbers=check_numbers):
+        # Use intent-based relaxed/strict check if available; fall back to message heuristics.
+        strict_calc_intents = {"EQUILIBRIUM_CALCULATION", "TASK_CORRECTION", "FLASH_CALCULATION"}
+        relaxed_intents = {
+            "CONCEPT_QA",
+            "MODEL_SELECTION_QA",
+            "RESULT_INTERPRETATION",
+            "PROCESS_RECOMMENDATION",
+            "SENSITIVITY_ANALYSIS",
+            "FLOW_DESIGN_QA",
+        }
+        if intent_label and intent_label.upper() in strict_calc_intents:
+            check_numbers = True
+        elif intent_label and intent_label.upper() in relaxed_intents:
+            check_numbers = False
+        else:
+            check_numbers = _is_thermo_question(message) and _is_calculation_question(message)
+        if _is_thermo_question(message) and check_numbers:
+            if _contains_ungrounded_claim(value, check_numbers=True, grounded_numbers=grounded_numbers):
                 return [EvidenceStatement(category="Warning", text=_WITHHELD_TEXT)]
-        if _contains_ungrounded_claim(value):
+        if _contains_ungrounded_claim(value, grounded_numbers=grounded_numbers):
             value += "\n\n（以上涉及数值未经确定性引擎验证，请以计算结果为准。）"
         return [EvidenceStatement(category="Knowledge", text=value)]
 

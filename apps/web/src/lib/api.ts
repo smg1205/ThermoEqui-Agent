@@ -1,4 +1,9 @@
-import type { CalculationEnvelope, ChatResponse, TaskManifest } from "./types";
+import type {
+  CalculationEnvelope,
+  ChatResponse,
+  PhaseDiagramResponse,
+  TaskManifest,
+} from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -39,6 +44,13 @@ export function rerunTask(task: TaskManifest): Promise<CalculationEnvelope> {
   });
 }
 
-export function exportUrl(runId: string, format: "json" | "csv"): string {
+export function phaseDiagram(task: TaskManifest): Promise<PhaseDiagramResponse> {
+  return request<PhaseDiagramResponse>("/api/calculations/phase-diagram", {
+    method: "POST",
+    body: JSON.stringify(task),
+  });
+}
+
+export function exportUrl(runId: string, format: "json" | "csv" | "dwsim"): string {
   return `${API_URL}/api/runs/${runId}/export?format=${format}`;
 }

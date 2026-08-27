@@ -1,5 +1,0 @@
-onlyBuiltDependencies:
-  - es5-ext
-  - esbuild
-  - sharp
-  - unrs-resolver

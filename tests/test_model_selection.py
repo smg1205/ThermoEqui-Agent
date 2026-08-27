@@ -102,7 +102,8 @@ def test_auto_selection_raises_structured_error_when_nothing_is_executable() -> 
     with pytest.raises(ThermoEquiError) as captured:
         execute_task(task)
 
-    assert captured.value.detail.failure_type == FailureType.PARAMETER_OUT_OF_DOMAIN
-    assert "No executable model" in captured.value.detail.message
-    assert "missing reviewed parameters" in captured.value.detail.message
-    assert "thermoequi-seed" in captured.value.detail.recovery_action
+    # LLE has a typed contract but no production numerical backend: the route
+    # produces the LLE-specific structured missing_parameters failure.
+    assert captured.value.detail.failure_type == FailureType.MISSING_PARAMETERS
+    assert "cannot represent liquid-liquid" in captured.value.detail.message
+    assert "NRTL or UNIQUAC" in captured.value.detail.recovery_action

@@ -7,6 +7,7 @@ export type Intent =
   | "RESULT_INTERPRETATION"
   | "SENSITIVITY_ANALYSIS"
   | "PROCESS_RECOMMENDATION"
+  | "FLOW_DESIGN_QA"
   | "TASK_CORRECTION"
   | "UNSUPPORTED_TASK";
 
@@ -18,12 +19,14 @@ export type CalculationType =
   | "tp_flash"
   | "phase_stability"
   | "azeotrope"
-  | "lle";
+  | "lle"
+  | "infinite_dilution_activity";
 
 export interface ComponentIdentity {
   component_id: string;
   name: string;
   cas_number?: string | null;
+  smiles?: string | null;
   aliases: string[];
 }
 
@@ -33,6 +36,7 @@ export interface Conditions {
   liquid_composition?: number[] | null;
   vapor_composition?: number[] | null;
   feed_composition?: number[] | null;
+  temperature_span_K?: [number, number] | null;
 }
 
 export interface ParameterSet {
@@ -74,6 +78,19 @@ export interface EquilibriumPoint {
   liquid_composition: number[];
   vapor_composition: number[];
   equilibrium_residual: number;
+}
+
+export interface ModelSeries {
+  model_name: string;
+  points: EquilibriumPoint[];
+}
+
+export interface GammaInfinityPoint {
+  temperature_K: number;
+  solute_index: number;
+  solvent_index: number;
+  gamma_infinity: number;
+  ln_gamma_infinity: number;
 }
 
 export interface CheckResult {
@@ -144,6 +161,7 @@ export interface CalculationEnvelope {
     model_name: string;
     parameter_set_id?: string | null;
     points: EquilibriumPoint[];
+    gamma_infinity: GammaInfinityPoint[];
     phases: PhaseResult[];
     temperature_K?: number | null;
     pressure_kPa?: number | null;
@@ -163,6 +181,41 @@ export interface CalculationEnvelope {
   model_recommendations: ModelRecommendation[];
 }
 
+export interface FailureDetail {
+  failure_type: string;
+  message: string;
+  recovery_action: string;
+  details: Record<string, unknown>;
+}
+
+export type PhaseDiagramStatus = "passed" | "warning" | "failed" | "unsupported";
+
+export type PhaseDiagramType = "TXY" | "PXY";
+
+export interface PhaseDiagramEntry {
+  model_name: string;
+  status: PhaseDiagramStatus;
+  executable: boolean;
+  score?: number | null;
+  result: CalculationEnvelope["result"] | null;
+  validation?: ValidationReport | null;
+  failure: FailureDetail | null;
+  parameter_sources?: Array<Record<string, string>>;
+  warnings: string[];
+}
+
+export interface PhaseDiagramResponse {
+  task: TaskManifest;
+  diagram_type: PhaseDiagramType;
+  entries: PhaseDiagramEntry[];
+  total_models: number;
+  passed_count: number;
+  warning_count: number;
+  failed_count: number;
+  unsupported_count: number;
+  summary: string;
+}
+
 export interface EvidenceStatement {
   category: "Knowledge" | "Database" | "Calculation" | "Inference" | "Estimate" | "Warning";
   text: string;
@@ -175,6 +228,64 @@ export interface AgentStep {
   tool_name?: string | null;
 }
 
+// —— Process flow design (Skill / FlowDesignDraft) ——
+// See schemas/domain.py FlowDesignDraft for the Python source of truth.
+
+export type FlowParameterSource = "LLM_SUGGESTED" | "RULE_SUGGESTED" | "VALIDATED";
+
+export type UnitOperationType =
+  | "preheater"
+  | "distillation_column"
+  | "flash_drum"
+  | "condenser"
+  | "reboiler"
+  | "heat_exchanger"
+  | "mixer"
+  | "splitter";
+
+export interface FlowParameter {
+  value: number | string;
+  source: FlowParameterSource;
+  needs_validation?: boolean;
+  note?: string | null;
+}
+
+export interface FlowFeed {
+  components: string[];
+  composition_mole?: number[];
+  temperature_K?: number | null;
+  pressure_kPa?: number | null;
+  flow_rate_mol_s?: number | null;
+  assumption?: string | null;
+}
+
+export interface FlowUnitOperation {
+  id: string;
+  type: UnitOperationType;
+  name: string;
+  input_stream?: string | null;
+  output_streams?: Record<string, string>;
+  conditions?: Record<string, FlowParameter>;
+}
+
+export interface FlowProductSpec {
+  stream: string;
+  spec: string;
+}
+
+export interface FlowDesignDraft {
+  flow_name: string;
+  flow_type?: string;
+  feed: FlowFeed;
+  unit_operations: FlowUnitOperation[];
+  streams_connectivity_note?: string | null;
+  thermodynamic_model?: string | null;
+  model_recommendation_note?: string | null;
+  product_specs?: FlowProductSpec[];
+  assumptions?: string[];
+  notes?: string[];
+}
+
 export interface ChatResponse {
   conversation_id: string;
   intent: Intent;
@@ -183,6 +294,7 @@ export interface ChatResponse {
   execution_steps: AgentStep[];
   task?: TaskManifest | null;
   calculation?: CalculationEnvelope | null;
+  flow_design?: FlowDesignDraft | null;
   request_id?: string | null;
 }
 

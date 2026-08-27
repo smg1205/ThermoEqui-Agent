@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +12,7 @@ class LLMClient(ABC):
     """Abstract LLM client for skill answer synthesis."""
 
     @abstractmethod
-    def generate(self, prompt: str, system_prompt: Optional[str] = None, **kwargs) -> str:
+    def generate(self, prompt: str, system_prompt: str | None = None, **kwargs) -> str:
         pass
 
 
@@ -31,11 +30,14 @@ class ProjectProviderClient(LLMClient):
     def _get_provider(self):
         if self._provider is None:
             from apps.api.main import configured_provider
+
             self._provider = configured_provider()
         return self._provider
 
-    def generate(self, prompt: str, system_prompt: Optional[str] = None, **kwargs) -> str:
-        import os, json
+    def generate(self, prompt: str, system_prompt: str | None = None, **kwargs) -> str:
+        import json
+        import os
+
         api_key = os.environ.get("DEEPSEEK_API_KEY", "")
         model = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash")
         base_url = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
@@ -66,11 +68,11 @@ class MockLLMClient(LLMClient):
     def __init__(self, temperature: float = 0.3) -> None:
         self._temperature = temperature
 
-    def generate(self, prompt: str, system_prompt: Optional[str] = None, **kwargs) -> str:
+    def generate(self, prompt: str, system_prompt: str | None = None, **kwargs) -> str:
         return "（Mock模式）根据知识库检索，建议结合上下文具体分析。"
 
 
-def get_default_llm() -> Optional[LLMClient]:
+def get_default_llm() -> LLMClient | None:
     """Return a ProjectProviderClient; falls back to MockLLMClient on error."""
     try:
         return ProjectProviderClient()

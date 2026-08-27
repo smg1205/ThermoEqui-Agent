@@ -10,6 +10,7 @@ from agent.router import (
 from schemas.domain import CalculationEnvelope, CalculationResult, FailureType, TaskManifest
 from thermo_engine.backend import ThermodynamicBackend
 from thermo_engine.errors import ThermoEquiError
+from thermo_engine.registry import DEFAULT_BACKEND_REGISTRY
 from thermo_engine.service import (
     calculate_equilibrium,
     resolve_backend,
@@ -33,6 +34,10 @@ def calculate_task(
     if available_parameter_models is None:
         available_parameter_models = available_parameter_models_for_task(task)
     if task.model_name is None:
+        if task.calculation_type == "lle":
+            # LLE has a typed contract but no production numerical backend.
+            # Route through the registry for the LLE-specific structured failure.
+            task = DEFAULT_BACKEND_REGISTRY.route_task(task)
         candidates = rank_executable_models(task, available_parameter_models)
         if not candidates:
             raise ThermoEquiError(
@@ -85,6 +90,13 @@ def execute_task(
             calculate_task(task, available_parameter_models),
             available_parameter_models,
         )
+
+    if task.calculation_type == "lle":
+        # LLE has a typed contract but no production numerical backend. Route
+        # through the registry so the user gets the LLE-specific structured
+        # failure instead of a generic "no executable model" message.
+        routed = DEFAULT_BACKEND_REGISTRY.route_task(task)
+        task = routed
 
     candidates = rank_executable_models(task, available_parameter_models)[:3]
     if not candidates:

@@ -7,6 +7,7 @@ on the task or attached from the production parameter repository.
 from __future__ import annotations
 
 import json
+from typing import Any, cast
 
 import numpy as np
 from scipy.optimize import brentq
@@ -15,6 +16,7 @@ from schemas.domain import (
     CalculationResult,
     EquilibriumPoint,
     FailureType,
+    ParameterSet,
     PhaseResult,
     TaskManifest,
 )
@@ -28,11 +30,14 @@ class ActCoeffBackend:
 
     model_name = ""
     version = ""
+    solver_name = "activity-coefficient VLE"
+
+    def _warnings(self) -> list[str]:
+        return []
 
     def parameter_sources(self, request: TaskManifest) -> list[dict[str, str]]:
         params = self._params(request)
-        parameter_set = params.get("_parameter_set")
-        assert parameter_set is not None
+        parameter_set = cast(ParameterSet, params["_parameter_set"])
         return [
             {
                 "component": " / ".join(parameter_set.component_order),
@@ -48,19 +53,28 @@ class ActCoeffBackend:
             }
         ]
 
-    def _gamma(self, xs: np.ndarray, T: float, names: list[str], params: dict | None) -> np.ndarray:
+    def _gamma(
+        self,
+        xs: np.ndarray[Any, Any],
+        T: float,
+        names: list[str],
+        params: dict[str, Any] | None,
+    ) -> np.ndarray[Any, Any]:
         raise NotImplementedError
 
-    def _params(self, req: TaskManifest) -> dict | None:
+    def _params(self, req: TaskManifest) -> dict[str, Any]:
         """Resolve the matching reviewed parameter set from the request manifest."""
         names = [c.name for c in req.components]
         parameter_set = matching_parameter_set(req.parameters, req.components, self.model_name)
         if parameter_set is not None:
             try:
-                converted = parameter_set_to_backend_params(
-                    parameter_set,
-                    self.model_name,
-                    parameter_set.component_order,
+                converted = cast(
+                    dict[str, Any],
+                    parameter_set_to_backend_params(
+                        parameter_set,
+                        self.model_name,
+                        parameter_set.component_order,
+                    ),
                 )
             except ValueError as error:
                 raise ThermoEquiError(
@@ -88,9 +102,9 @@ class ActCoeffBackend:
         PP = P * 1000.0
         params = self._params(req)
 
-        def f(T):
+        def f(T: float) -> float:
             g = self._gamma(np.array(xs), T, names, params)
-            return sum(xs[i] * g[i] * psat_Pa(names[i], T) / PP for i in range(len(names))) - 1.0
+            return float(sum(xs[i] * g[i] * psat_Pa(names[i], T) / PP for i in range(len(names))) - 1.0)
 
         try:
             T, info = brentq(f, lo, hi, xtol=1e-9, full_output=True, maxiter=200)
@@ -118,6 +132,8 @@ class ActCoeffBackend:
             residual=abs(sum(ys) - 1.0),
             iters=int(info.iterations),
             points=[point],
+            warnings=self._warnings(),
+            solver_name=self.solver_name,
             phases=[
                 PhaseResult(phase="liquid", fraction=1.0, composition=xs),
                 PhaseResult(phase="vapor", fraction=0.0, composition=ys),
@@ -137,7 +153,7 @@ class ActCoeffBackend:
         PP = P * 1000.0
         params = self._params(req)
 
-        def f(T):
+        def f(T: float) -> float:
             xi = [ys[i] * PP / psat_Pa(names[i], T) for i in range(len(names))]
             s = sum(xi)
             xn = [x / s for x in xi] if s > 0 else xi
@@ -151,7 +167,7 @@ class ActCoeffBackend:
                     break
                 xn = xn_new
             g = self._gamma(np.array(xn), T, names, params)
-            return sum(ys[i] * PP / (g[i] * psat_Pa(names[i], T)) for i in range(len(names))) - 1.0
+            return float(sum(ys[i] * PP / (g[i] * psat_Pa(names[i], T)) for i in range(len(names))) - 1.0)
 
         try:
             T, info = brentq(f, lo, hi, xtol=1e-9, full_output=True, maxiter=200)
@@ -192,6 +208,8 @@ class ActCoeffBackend:
             residual=abs(s - 1.0),
             iters=int(info.iterations),
             points=[point],
+            warnings=self._warnings(),
+            solver_name=self.solver_name,
             phases=[
                 PhaseResult(phase="liquid", fraction=1.0, composition=xn),
                 PhaseResult(phase="vapor", fraction=0.0, composition=ys),
@@ -214,7 +232,7 @@ class ActCoeffBackend:
             raise ThermoEquiError(FailureType.MISSING_DATA, "Pressure required.", "")
         all_points: list[EquilibriumPoint] = []
         iterations = 0
-        warnings: list[str] = []
+        warnings = self._warnings()
         # Slight offset from pure edges to avoid NaN in combinatorial terms
         _eps = 1e-12
         for fraction in np.linspace(_eps, 1.0 - _eps, req.points):
@@ -244,6 +262,7 @@ class ActCoeffBackend:
             residual=residual,
             iters=iterations,
             warnings=warnings,
+            solver_name=self.solver_name,
             phase_state="curve",
         )
 
@@ -301,6 +320,8 @@ class ActCoeffBackend:
             P=None,
             residual=residual,
             iters=0,
+            warnings=self._warnings(),
+            solver_name=self.solver_name,
             phase_state="curve",
         )
 
@@ -322,9 +343,10 @@ class ActCoeffBackend:
         n = len(names)
         P_Pa = P * 1000.0
         params = self._params(req)
+        warnings = self._warnings()
         K = np.array([psat_Pa(names[i], T) / P_Pa for i in range(n)])
 
-        def _rr(beta):
+        def _rr(beta: float) -> float:
             return float(sum(zs[i] * (K[i] - 1.0) / (1.0 + beta * (K[i] - 1.0)) for i in range(n)))
 
         f0 = _rr(0.0)
@@ -348,7 +370,6 @@ class ActCoeffBackend:
             iterations = 0
         else:
             state = "two_phase"
-            warnings: list[str] = []
             for iteration in range(100):
                 try:
                     beta, info = brentq(
@@ -416,6 +437,8 @@ class ActCoeffBackend:
             phases=phases,
             residual=residual,
             iters=iterations,
+            warnings=warnings,
+            solver_name=self.solver_name,
             phase_state=state,
         )
 
@@ -463,4 +486,11 @@ class ActCoeffBackend:
             FailureType.UNSUPPORTED_MODEL,
             f"{self.model_name} cannot represent liquid-liquid equilibrium.",
             "Use a validated LLE backend when available.",
+        )
+
+    def infinite_dilution_activity(self, req: TaskManifest) -> CalculationResult:
+        raise ThermoEquiError(
+            FailureType.UNSUPPORTED_MODEL,
+            f"{self.model_name} VLE does not expose infinite-dilution activity coefficients.",
+            "Use the PGSSI backend for gamma-infinity predictions.",
         )

@@ -39,13 +39,13 @@ def test_rag():
 
     for idx, doc in enumerate(docs[:3]):
         chunks = retriever.splitter.split(doc)
-        print(f"\n📄 文档 {idx+1}: {doc.source} (共 {len(chunks)} 个语义块)")
+        print(f"\n📄 文档 {idx + 1}: {doc.source} (共 {len(chunks)} 个语义块)")
         if len(chunks) == 0:
             print("   ⚠️ 该文档分割后没有任何块（可能内容为空）")
             continue
         for i, chunk in enumerate(chunks):
             preview = chunk.content[:80].replace("\n", " ") + ("..." if len(chunk.content) > 80 else "")
-            print(f"  块 {i+1}: [{len(chunk.content)} 字符] {preview}")
+            print(f"  块 {i + 1}: [{len(chunk.content)} 字符] {preview}")
 
     test_query = "热力学平衡"
     print(f"\n🔍 检索测试：查询 '{test_query}'")
