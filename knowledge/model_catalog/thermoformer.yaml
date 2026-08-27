@@ -1,0 +1,50 @@
+name: ThermoFormer
+aliases:
+  - thermoformer
+  - thermo former
+  - tf
+family: ml_property_prediction
+backend: thermoformer
+implementation_status: available
+production_ready: false
+supported_equilibrium_types:
+  - VLE
+supported_calculation_types:
+  - bubble_point
+  - isothermal_vle
+  - isobaric_vle
+  - infinite_dilution_activity
+excluded_systems:
+  - electrolyte
+  - reactive
+  - SLE
+  - polymer
+  - hydrate
+  - petroleum_pseudocomponent
+  - VLLE
+  - LLE
+pressure_regime:
+  - low
+  - moderate
+requires_binary_parameters: false
+parameter_requirements:
+  - Trained ThermoFormer checkpoint (THERMOFORMER_CHECKPOINT) and ThermoFormer source tree (THERMOFORMER_SRC)
+  - SMILES for every component on the task
+  - torch, rdkit, unimol-tools, and scikit-learn optional dependencies
+validation_requirements:
+  - equilibrium_residual_small
+  - converged_true
+  - temperature_positive
+  - pressure_positive
+scope_notes:
+  - First-class predictive backend for neural VLE from molecular structure.
+  - ThermoFormer predicts bubble-point VLE (P-x-y, T-x-y) and activity coefficients without binary interaction parameters.
+  - Validated for binary and ternary systems at pressure ≤ 500 kPa.
+  - Does not implement dew_point, tp_flash, phase_stability, azeotrope, or LLE; those requests fail with unsupported_model.
+  - production_ready set to false pending benchmark closure and extended testing.
+optional_dependency: torch, rdkit, unimol-tools, scikit-learn
+source_refs:
+  - knowledge/model_cards/thermoformer.yaml
+  - thermo_engine/registry.py
+  - thermo_engine/thermoformer_backend.py
+  - tests/test_thermoformer_backend.py

@@ -39,7 +39,7 @@ _MODEL_ALLOWED_FOR_AUTO = {"Wilson", "NRTL", "UNIQUAC"}
 COMPONENT_PATTERNS = (
     ("benzene", "Benzene", "71-43-2", ("苯", "benzene"), "c1ccccc1"),
     ("toluene", "Toluene", "108-88-3", ("甲苯", "toluene"), "Cc1ccccc1"),
-    ("ethanol", "Ethanol", "64-17-5", ("乙醇", "ethanol"), "CCO"),
+    ("ethanol", "Ethanol", "64-17-5", ("乙醇", "醇", "ethanol"), "CCO"),
     ("acetone", "Acetone", "67-64-1", ("丙酮", "acetone"), "CC(=O)C"),
     ("methane", "Methane", "74-82-8", ("甲烷", "methane"), "C"),
     ("ethane", "Ethane", "74-84-0", ("乙烷", "ethane"), "CC"),
@@ -1366,6 +1366,7 @@ class ConversationOrchestrator:
 
     @classmethod
     def _prepare_task(
+
         cls,
         message: str,
         task: TaskManifest,
@@ -1472,7 +1473,7 @@ class ConversationOrchestrator:
             ]
             if len(matches) != 1:
                 raise LLMProviderOutputError(
-                    "External provider returned components inconsistent with the user message."
+                    f"External provider returned components inconsistent with the user message. provider_tokens={provider_tokens} expected_by_cas={expected_by_cas}"
                 )
             if provider_component.cas_number is not None and provider_component.cas_number != matches[0]:
                 raise LLMProviderOutputError("External provider returned a component name/CAS mismatch.")
@@ -1551,11 +1552,11 @@ class ConversationOrchestrator:
     @staticmethod
     def _missing_conditions(task: TaskManifest) -> list[str]:
         missing: list[str] = []
-        if (
-            task.calculation_type in {"isobaric_vle", "bubble_point", "dew_point", "azeotrope"}
-            and task.conditions.pressure_kPa is None
-        ):
+        if task.calculation_type == "isobaric_vle" and task.conditions.pressure_kPa is None:
             missing.append("pressure_kPa")
+        if task.calculation_type in {"bubble_point", "dew_point", "azeotrope"}:
+            if task.conditions.temperature_K is None and task.conditions.pressure_kPa is None:
+                missing.append("temperature_K or pressure_kPa")
         if task.calculation_type in {"isothermal_vle", "tp_flash"} and task.conditions.temperature_K is None:
             missing.append("temperature_K")
         if task.calculation_type == "phase_stability":
